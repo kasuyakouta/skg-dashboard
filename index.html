@@ -283,81 +283,70 @@ async function loadAll() {
   cachedHr = [];
   cachedSummary = [];
 
-  // 部署一覧を取得（GASの定数と同じ順序で固定）
   const DEPTS = [
     "地域インフラ共創部1課","地域インフラ共創部2課",
     "感動デザイン課","総合クリエイト課","トータルメンテナンス課",
     "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
   ];
 
-  let completed = 0;
   const total = DEPTS.length;
-  setStatus(`データを読み込み中... (0/${total}部署)`, true);
+  setStatus(`データを読み込み中... (0/${total})`, true);
 
-  // 全部署を並行してJSONP取得
-  const promises = DEPTS.map(function(dept) {
-    const url = GAS_URL + '?type=all&ym=' + encodeURIComponent(ym)
-                        + '&dept=' + encodeURIComponent(dept);
-    return fetchJSONP(url).then(function(data) {
-      if (data.perf) data.perf.forEach(function(r){ cachedPerf.push(r); });
-      if (data.hr)   data.hr.forEach(function(r){   cachedHr.push(r);   });
-      completed++;
-      setStatus(`データを読み込み中... (${completed}/${total}部署完了)`, true);
-      // 最初の部署が返ってきた時点でサマリーを更新
-      if (completed === 1) renderSummary();
-    }).catch(function(err) {
-      completed++;
-      console.warn(dept + ' エラー: ' + err.message);
+  // 順次取得（1部署ずつ確実に取得する）
+  for (let i = 0; i < DEPTS.length; i++) {
+    const dept = DEPTS[i];
+    setStatus(`データを読み込み中... (${i+1}/${total}) ${dept}`, true);
+    try {
+      const url = GAS_URL + '?type=all&ym=' + encodeURIComponent(ym)
+                          + '&dept=' + encodeURIComponent(dept);
+      const data = await fetchJSONP(url);
+      if (data && data.perf) data.perf.forEach(function(r){ cachedPerf.push(r); });
+      if (data && data.hr)   data.hr.forEach(function(r){   cachedHr.push(r);   });
+    } catch(err) {
+      console.warn(dept + ' スキップ: ' + err.message);
+    }
+    // 途中経過をリアルタイム表示
+    renderSummary(DEPTS);
+  }
+
+  // サマリー計算（全部署分）
+  cachedSummary = DEPTS.map(function(dept) {
+    const recs = cachedPerf.filter(function(r){ return r.dept === dept; });
+    let totalTarget=0, totalActual=0, itemCount=0;
+    recs.forEach(function(r){
+      if(r.metric==="数量"||r.metric==="売上"||r.metric==="粗利益"){
+        if(typeof r.target==="number") totalTarget+=r.target;
+        if(typeof r.actual==="number") totalActual+=r.actual;
+        itemCount++;
+      }
     });
+    return {
+      dept:dept, ym:ym,
+      totalTarget:totalTarget, totalActual:totalActual,
+      achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*1000)/10:null,
+      itemCount:itemCount
+    };
   });
 
-  try {
-    await Promise.all(promises);
+  renderSummary(DEPTS);
+  renderHr();
+  renderPerfDetail();
 
-    // サマリー計算
-    cachedSummary = DEPTS.map(function(dept) {
-      const recs = cachedPerf.filter(function(r){ return r.dept === dept; });
-      let totalTarget=0, totalActual=0, itemCount=0;
-      recs.forEach(function(r){
-        if(r.metric==="数量"||r.metric==="売上"||r.metric==="粗利益"){
-          if(typeof r.target==="number") totalTarget+=r.target;
-          if(typeof r.actual==="number") totalActual+=r.actual;
-          itemCount++;
-        }
-      });
-      return {
-        dept:dept, ym:ym,
-        totalTarget:totalTarget, totalActual:totalActual,
-        achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*1000)/10:null,
-        itemCount:itemCount
-      };
-    });
+  const deptSel = document.getElementById('dept-select');
+  deptSel.innerHTML = '<option value="">全部署</option>';
+  DEPTS.forEach(function(d) {
+    const opt = document.createElement('option');
+    opt.value = d; opt.textContent = d;
+    deptSel.appendChild(opt);
+  });
 
-    renderSummary();
-    renderHr();
-    renderPerfDetail();
-
-    // 部署セレクト更新
-    const deptSel = document.getElementById('dept-select');
-    deptSel.innerHTML = '<option value="">全部署</option>';
-    DEPTS.forEach(function(d) {
-      const opt = document.createElement('option');
-      opt.value = d; opt.textContent = d;
-      deptSel.appendChild(opt);
-    });
-
-    setStatus(ym + ' のデータを表示中（実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件）', false);
-  } catch(e) {
-    setStatus('❌ エラー: ' + e.message, false);
-    document.getElementById('summary-body').innerHTML =
-      '<div class="error-box">データ取得に失敗しました。<br>' + e.message + '</div>';
-  }
+  setStatus(ym + ' のデータを表示中（実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件）', false);
 }
 
 // ============================================================
 // サマリーテーブル描画
 // ============================================================
-function renderSummary() {
+function renderSummary(DEPTS_ARG) {
   if (!cachedSummary.length) {
     document.getElementById('summary-body').innerHTML = '<div class="empty">データがありません</div>';
     return;
