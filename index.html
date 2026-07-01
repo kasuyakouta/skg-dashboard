@@ -309,19 +309,35 @@ async function loadAll() {
     renderSummary(DEPTS);
   }
 
+  const DEPT_MAIN = {
+    "地域インフラ共創部1課":  { metric:"粗利益", unit:"千円" },
+    "地域インフラ共創部2課":  { metric:"数量",   unit:"kg"   },
+    "感動デザイン課":         { metric:"数量",   unit:"t"    },
+    "総合クリエイト課":       { metric:null,     unit:null   },
+    "トータルメンテナンス課": { metric:null,     unit:null   },
+    "Re\"バース仙台港":       { metric:"数量",   unit:"t"    },
+    "Re\"バース仙台岩切":     { metric:"数量",   unit:"t"    },
+    "Re\"バース仙台扇町":     { metric:"数量",   unit:"t"    },
+  };
+
   // サマリー計算（全部署分）
   cachedSummary = DEPTS.map(function(dept) {
     const recs = cachedPerf.filter(function(r){ return r.dept === dept; });
+    const mainDef = DEPT_MAIN[dept] || { metric:"数量", unit:null };
     let totalTarget=0, totalActual=0, itemCount=0;
     recs.forEach(function(r){
-      if(r.metric==="数量"||r.metric==="売上"||r.metric==="粗利益"){
-        if(typeof r.target==="number") totalTarget+=r.target;
-        if(typeof r.actual==="number") totalActual+=r.actual;
+      const metricMatch = !mainDef.metric || r.metric === mainDef.metric;
+      const unitMatch   = !mainDef.unit   || r.unit   === mainDef.unit;
+      if (metricMatch && unitMatch) {
+        if(typeof r.target==="number" && r.target > 0) totalTarget+=r.target;
+        if(typeof r.actual==="number" && r.actual > 0) totalActual+=r.actual;
         itemCount++;
       }
     });
     return {
       dept:dept, ym:ym,
+      mainMetric: mainDef.metric,
+      mainUnit:   mainDef.unit,
       totalTarget:totalTarget, totalActual:totalActual,
       achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*1000)/10:null,
       itemCount:itemCount
@@ -356,7 +372,7 @@ function renderSummary(DEPTS_ARG) {
     return rb - ra;
   });
   let html = '<table class="summary-table"><thead><tr>'
-    + '<th>部署名</th><th>目標合計</th><th>実績合計</th><th>達成率</th><th>進捗</th>'
+    + '<th>部署名</th><th>主要指標</th><th>目標</th><th>実績</th><th>達成率</th><th>進捗</th>'
     + '</tr></thead><tbody>';
   sorted.forEach(row => {
     const rate = row.achieveRate;
@@ -368,8 +384,10 @@ function renderSummary(DEPTS_ARG) {
       else { cls = 'rate-low'; barColor = '#E74C3C'; }
     }
     const barWidth = rate !== null ? Math.min(rate, 100) : 0;
+    const metricLabel = row.mainMetric ? row.mainMetric + (row.mainUnit ? '（' + row.mainUnit + '）' : '') : '-';
     html += `<tr>
       <td class="dept-name">${row.dept}</td>
+      <td style="font-size:12px;color:var(--muted)">${metricLabel}</td>
       <td>${fmtNum(row.totalTarget)}</td>
       <td>${fmtNum(row.totalActual)}</td>
       <td><span class="rate-badge ${cls}">${rateStr}</span></td>
