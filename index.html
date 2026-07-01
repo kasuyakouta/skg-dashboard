@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SKグループ 営業会議ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #1F4E78;
+    --accent: #2E86C1;
+    --bg: #F4F6F8;
+    --card: #FFFFFF;
+    --text: #1A1A2E;
+    --muted: #6B7280;
+    --border: #E2E8F0;
+    --success: #16A085;
+    --warning: #E67E22;
+    --danger: #C0392B;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+         background: var(--bg); color: var(--text); font-size: 14px; }
+
+  /* ヘッダー */
+  header {
+    background: var(--primary); color: #fff;
+    padding: 14px 24px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header span { font-size: 12px; opacity: 0.8; }
+
+  /* コントロールバー */
+  .controls {
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+    flex-wrap: wrap;
+  }
+  .controls label { font-size: 13px; color: var(--muted); }
+  .controls select {
+    padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; background: #fff; cursor: pointer;
+    color: var(--text);
+  }
+  .btn {
+    padding: 6px 16px; border-radius: 6px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: opacity 0.2s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: var(--accent); color: #fff; }
+
+  /* ステータスバー */
+  #status-bar {
+    padding: 10px 24px; font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite; display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* メインレイアウト */
+  main { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
+
+  /* タブ */
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--card); color: var(--muted); cursor: pointer;
+    font-size: 13px; transition: all 0.2s;
+  }
+  .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+  /* タブコンテンツ */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* カード */
+  .card {
+    background: var(--card); border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .card h2 { font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 14px;
+              padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+
+  /* サマリーテーブル */
+  .summary-table { width: 100%; border-collapse: collapse; }
+  .summary-table th {
+    text-align: left; padding: 10px 12px; font-size: 12px;
+    color: var(--muted); border-bottom: 2px solid var(--border);
+    background: #F8FAFC;
+  }
+  .summary-table td { padding: 12px 12px; border-bottom: 1px solid var(--border); }
+  .summary-table tr:hover td { background: #F8FAFC; }
+  .summary-table .dept-name { font-weight: 600; }
+
+  /* 達成率バッジ */
+  .rate-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600;
+  }
+  .rate-over { background: #D5F5E3; color: #1E8449; }
+  .rate-near { background: #FEF9E7; color: #B7770D; }
+  .rate-low  { background: #FDEDEC; color: #922B21; }
+  .rate-na   { background: #EAECEE; color: #717D7E; }
+
+  /* プログレスバー */
+  .progress-wrap { background: var(--border); border-radius: 4px; height: 8px;
+                   width: 120px; overflow: hidden; display: inline-block; vertical-align: middle; }
+  .progress-bar  { height: 100%; border-radius: 4px; transition: width 0.4s; }
+
+  /* グリッド */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* 人事カード */
+  .hr-list { display: flex; flex-direction: column; gap: 10px; }
+  .hr-item {
+    padding: 12px 14px; border-radius: 8px; border-left: 4px solid var(--accent);
+    background: #F8FAFC;
+  }
+  .hr-item.cat-good   { border-left-color: var(--success); }
+  .hr-item.cat-bad    { border-left-color: var(--warning); }
+  .hr-item.cat-safety { border-left-color: var(--danger); }
+  .hr-item.cat-enter  { border-left-color: #8E44AD; }
+  .hr-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .hr-meta .tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: #E8EDF2; color: var(--muted);
+  }
+  .hr-content { font-size: 13px; line-height: 1.6; color: var(--text); }
+  .hr-target { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* グラフキャンバス */
+  .chart-wrap { position: relative; height: 280px; }
+
+  /* エラー表示 */
+  .error-box {
+    background: #FDEDEC; border: 1px solid #E74C3C; border-radius: 8px;
+    padding: 16px; color: #922B21; font-size: 13px;
+  }
+
+  /* 空状態 */
+  .empty { text-align: center; color: var(--muted); padding: 40px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 SKグループ 営業会議ダッシュボード</h1>
+  <span id="header-ym">-</span>
+</header>
+
+<div class="controls">
+  <label>対象年月</label>
+  <select id="ym-select"><option value="">読み込み中...</option></select>
+  <button class="btn btn-primary" onclick="loadAll()">更新</button>
+  <div id="status-bar">
+    <div class="spinner" id="spinner"></div>
+    <span id="status-text">年月を選択して「更新」を押してください</span>
+  </div>
+</div>
+
+<main>
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('tab-summary', this)">📋 全部署サマリー</div>
+    <div class="tab" onclick="showTab('tab-hr', this)">👥 人事コメント</div>
+    <div class="tab" onclick="showTab('tab-perf', this)">📈 部署別実績</div>
+  </div>
+
+  <!-- サマリータブ -->
+  <div id="tab-summary" class="tab-content active">
+    <div class="card">
+      <h2>全部署 達成率サマリー</h2>
+      <div id="summary-body"><div class="empty">データがありません</div></div>
+    </div>
+  </div>
+
+  <!-- 人事コメントタブ -->
+  <div id="tab-hr" class="tab-content">
+    <div class="card">
+      <h2>今月の人事コメント（全部署）</h2>
+      <div id="hr-body"><div class="empty">データがありません</div></div>
+    </div>
+  </div>
+
+  <!-- 部署別実績タブ -->
+  <div id="tab-perf" class="tab-content">
+    <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;">
+      <label>部署</label>
+      <select id="dept-select" onchange="renderPerfDetail()">
+        <option value="">全部署</option>
+      </select>
+    </div>
+    <div id="perf-body"><div class="empty">データがありません</div></div>
+  </div>
+</main>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbybAvXkNCx9avzHmPW9HfThs7Z6o5tHHoC_QkfFcYLXbodTRUhuwbK8tpjno1SYo56_9g/exec";
+
+let cachedPerf = [];
+let cachedHr = [];
+let cachedSummary = [];
+
+// ============================================================
+// タブ切り替え
+// ============================================================
+function showTab(id, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+}
+
+// ============================================================
+// 初期化：年月一覧を取得
+// ============================================================
+async function init() {
+  setStatus('年月一覧を読み込み中...', true);
+  try {
+    const res = await fetch(GAS_URL + '?type=months');
+    const data = await res.json();
+    const months = (data.months || []).sort().reverse();
+    const sel = document.getElementById('ym-select');
+    sel.innerHTML = '';
+    if (months.length === 0) {
+      sel.innerHTML = '<option value="2026-06">2026-06（手動入力）</option>';
+    } else {
+      months.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        sel.appendChild(opt);
+      });
+    }
+    setStatus('年月を選択して「更新」を押してください', false);
+  } catch(e) {
+    setStatus('年月一覧の取得でエラーが発生しました: ' + e.message, false);
+    document.getElementById('ym-select').innerHTML = '<option value="2026-06">2026-06</option>';
+  }
+}
+
+// ============================================================
+// メイン：全データを取得して表示
+// ============================================================
+async function loadAll() {
+  const ym = document.getElementById('ym-select').value;
+  if (!ym) return;
+  document.getElementById('header-ym').textContent = ym;
+  setStatus('データを読み込み中...', true);
+
+  try {
+    const [summaryRes, allRes] = await Promise.all([
+      fetch(GAS_URL + '?type=summary&ym=' + ym),
+      fetch(GAS_URL + '?type=all&ym=' + ym)
+    ]);
+    const summaryData = await summaryRes.json();
+    const allData = await allRes.json();
+
+    if (summaryData.status === 'error') throw new Error(summaryData.message);
+
+    cachedSummary = summaryData.summary || [];
+    cachedPerf = allData.perf || [];
+    cachedHr = allData.hr || [];
+
+    renderSummary();
+    renderHr();
+    renderPerfDetail();
+
+    // 部署セレクト更新
+    const depts = [...new Set(cachedPerf.map(r => r.dept))];
+    const deptSel = document.getElementById('dept-select');
+    deptSel.innerHTML = '<option value="">全部署</option>';
+    depts.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d; opt.textContent = d;
+      deptSel.appendChild(opt);
+    });
+
+    setStatus(ym + ' のデータを表示中（実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件）', false);
+  } catch(e) {
+    setStatus('❌ エラー: ' + e.message, false);
+    document.getElementById('summary-body').innerHTML =
+      '<div class="error-box">データ取得に失敗しました。GASのデプロイURLと権限設定を確認してください。<br>' + e.message + '</div>';
+  }
+}
+
+// ============================================================
+// サマリーテーブル描画
+// ============================================================
+function renderSummary() {
+  if (!cachedSummary.length) {
+    document.getElementById('summary-body').innerHTML = '<div class="empty">データがありません</div>';
+    return;
+  }
+  const sorted = [...cachedSummary].sort((a, b) => {
+    const ra = a.achieveRate || 0, rb = b.achieveRate || 0;
+    return rb - ra;
+  });
+  let html = '<table class="summary-table"><thead><tr>'
+    + '<th>部署名</th><th>目標合計</th><th>実績合計</th><th>達成率</th><th>進捗</th>'
+    + '</tr></thead><tbody>';
+  sorted.forEach(row => {
+    const rate = row.achieveRate;
+    const rateStr = rate !== null ? rate + '%' : '-';
+    let cls = 'rate-na', barColor = '#BDC3C7';
+    if (rate !== null) {
+      if (rate >= 100) { cls = 'rate-over'; barColor = '#27AE60'; }
+      else if (rate >= 80) { cls = 'rate-near'; barColor = '#E67E22'; }
+      else { cls = 'rate-low'; barColor = '#E74C3C'; }
+    }
+    const barWidth = rate !== null ? Math.min(rate, 100) : 0;
+    html += `<tr>
+      <td class="dept-name">${row.dept}</td>
+      <td>${fmtNum(row.totalTarget)}</td>
+      <td>${fmtNum(row.totalActual)}</td>
+      <td><span class="rate-badge ${cls}">${rateStr}</span></td>
+      <td>
+        <div class="progress-wrap">
+          <div class="progress-bar" style="width:${barWidth}%;background:${barColor}"></div>
+        </div>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('summary-body').innerHTML = html;
+}
+
+// ============================================================
+// 人事コメント描画
+// ============================================================
+function renderHr() {
+  const body = document.getElementById('hr-body');
+  if (!cachedHr.length) {
+    body.innerHTML = '<div class="empty">この月の人事コメントはありません</div>';
+    return;
+  }
+  const catClass = {
+    '頑張り・好事例': 'cat-good',
+    '安全衛生（事故・労災）': 'cat-safety',
+    '問題行動・クレーム対応': 'cat-bad',
+    '入退社・異動': 'cat-enter',
+  };
+  const depts = [...new Set(cachedHr.map(r => r.dept))];
+  let html = '';
+  depts.forEach(dept => {
+    const items = cachedHr.filter(r => r.dept === dept && r.content);
+    if (!items.length) return;
+    html += `<div style="margin-bottom:20px">
+      <div style="font-weight:600;color:var(--primary);margin-bottom:8px;font-size:14px">◾ ${dept}</div>
+      <div class="hr-list">`;
+    items.forEach(item => {
+      const cls = catClass[item.category] || '';
+      html += `<div class="hr-item ${cls}">
+        <div class="hr-meta">
+          <span class="tag">${item.category || '未分類'}</span>
+          ${item.unit ? '<span class="tag">' + item.unit + '</span>' : ''}
+          ${item.status ? '<span class="tag">' + item.status + '</span>' : ''}
+        </div>
+        <div class="hr-content">${esc(item.content)}</div>
+        ${item.targetPerson ? '<div class="hr-target">対象：' + esc(item.targetPerson) + '</div>' : ''}
+      </div>`;
+    });
+    html += '</div></div>';
+  });
+  body.innerHTML = html || '<div class="empty">コメントがありません</div>';
+}
+
+// ============================================================
+// 部署別実績描画
+// ============================================================
+function renderPerfDetail() {
+  const selectedDept = document.getElementById('dept-select').value;
+  const body = document.getElementById('perf-body');
+  const data = selectedDept
+    ? cachedPerf.filter(r => r.dept === selectedDept)
+    : cachedPerf;
+
+  if (!data.length) {
+    body.innerHTML = '<div class="empty">実績データがありません</div>';
+    return;
+  }
+
+  // 品目×指標でグループ化
+  const groups = {};
+  data.forEach(r => {
+    const key = r.dept + '||' + r.item + '||' + r.metric;
+    if (!groups[key]) groups[key] = { dept: r.dept, item: r.item, metric: r.metric, unit: r.unit, rows: [] };
+    groups[key].rows.push(r);
+  });
+
+  let html = '';
+  let prevDept = '';
+  Object.values(groups).forEach(g => {
+    if (g.dept !== prevDept) {
+      if (prevDept) html += '</div></div>';
+      html += `<div class="card"><h2>${g.dept}</h2><div class="grid-2">`;
+      prevDept = g.dept;
+    }
+    const target = g.rows[0].target;
+    const actual = g.rows[0].actual;
+    const rate = (target && actual) ? Math.round(actual / target * 100) : null;
+    let badgeCls = 'rate-na';
+    if (rate !== null) {
+      if (rate >= 100) badgeCls = 'rate-over';
+      else if (rate >= 80) badgeCls = 'rate-near';
+      else badgeCls = 'rate-low';
+    }
+    html += `<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#F8FAFC">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">${g.item}（${g.metric}）</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <span style="font-size:13px;color:var(--muted)">目標：</span><strong>${fmtNum(target)}${g.unit}</strong>
+          <span style="margin:0 6px;color:var(--border)">|</span>
+          <span style="font-size:13px;color:var(--muted)">実績：</span><strong>${fmtNum(actual)}${g.unit}</strong>
+        </div>
+        <span class="rate-badge ${badgeCls}">${rate !== null ? rate + '%' : '-'}</span>
+      </div>
+    </div>`;
+  });
+  if (prevDept) html += '</div></div>';
+  body.innerHTML = html;
+}
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+function setStatus(msg, loading) {
+  document.getElementById('status-text').textContent = msg;
+  document.getElementById('spinner').style.display = loading ? 'block' : 'none';
+}
+
+function fmtNum(n) {
+  if (n === null || n === undefined || n === '') return '-';
+  return Number(n).toLocaleString('ja-JP');
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// 初期化
+init();
+</script>
+</body>
+</html>
