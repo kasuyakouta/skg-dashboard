@@ -279,29 +279,68 @@ async function loadAll() {
   const ym = document.getElementById('ym-select').value;
   if (!ym) return;
   document.getElementById('header-ym').textContent = ym;
-  setStatus('データを読み込み中...', true);
+  cachedPerf = [];
+  cachedHr = [];
+  cachedSummary = [];
+
+  // 部署一覧を取得（GASの定数と同じ順序で固定）
+  const DEPTS = [
+    "地域インフラ共創部1課","地域インフラ共創部2課",
+    "感動デザイン課","総合クリエイト課","トータルメンテナンス課",
+    "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
+  ];
+
+  let completed = 0;
+  const total = DEPTS.length;
+  setStatus(`データを読み込み中... (0/${total}部署)`, true);
+
+  // 全部署を並行してJSONP取得
+  const promises = DEPTS.map(function(dept) {
+    const url = GAS_URL + '?type=all&ym=' + encodeURIComponent(ym)
+                        + '&dept=' + encodeURIComponent(dept);
+    return fetchJSONP(url).then(function(data) {
+      if (data.perf) data.perf.forEach(function(r){ cachedPerf.push(r); });
+      if (data.hr)   data.hr.forEach(function(r){   cachedHr.push(r);   });
+      completed++;
+      setStatus(`データを読み込み中... (${completed}/${total}部署完了)`, true);
+      // 最初の部署が返ってきた時点でサマリーを更新
+      if (completed === 1) renderSummary();
+    }).catch(function(err) {
+      completed++;
+      Logger.log && Logger.log(dept + ' エラー: ' + err.message);
+    });
+  });
 
   try {
-    const [summaryData, allData] = await Promise.all([
-      fetchJSONP(GAS_URL + '?type=summary&ym=' + ym),
-      fetchJSONP(GAS_URL + '?type=all&ym=' + ym)
-    ]);
+    await Promise.all(promises);
 
-    if (summaryData.status === 'error') throw new Error(summaryData.message);
-
-    cachedSummary = summaryData.summary || [];
-    cachedPerf = allData.perf || [];
-    cachedHr = allData.hr || [];
+    // サマリー計算
+    cachedSummary = DEPTS.map(function(dept) {
+      const recs = cachedPerf.filter(function(r){ return r.dept === dept; });
+      let totalTarget=0, totalActual=0, itemCount=0;
+      recs.forEach(function(r){
+        if(r.metric==="数量"||r.metric==="売上"||r.metric==="粗利益"){
+          if(typeof r.target==="number") totalTarget+=r.target;
+          if(typeof r.actual==="number") totalActual+=r.actual;
+          itemCount++;
+        }
+      });
+      return {
+        dept:dept, ym:ym,
+        totalTarget:totalTarget, totalActual:totalActual,
+        achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*1000)/10:null,
+        itemCount:itemCount
+      };
+    });
 
     renderSummary();
     renderHr();
     renderPerfDetail();
 
     // 部署セレクト更新
-    const depts = [...new Set(cachedPerf.map(r => r.dept))];
     const deptSel = document.getElementById('dept-select');
     deptSel.innerHTML = '<option value="">全部署</option>';
-    depts.forEach(d => {
+    DEPTS.forEach(function(d) {
       const opt = document.createElement('option');
       opt.value = d; opt.textContent = d;
       deptSel.appendChild(opt);
@@ -311,7 +350,7 @@ async function loadAll() {
   } catch(e) {
     setStatus('❌ エラー: ' + e.message, false);
     document.getElementById('summary-body').innerHTML =
-      '<div class="error-box">データ取得に失敗しました。GASのデプロイURLと権限設定を確認してください。<br>' + e.message + '</div>';
+      '<div class="error-box">データ取得に失敗しました。<br>' + e.message + '</div>';
   }
 }
 
