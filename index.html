@@ -211,8 +211,33 @@ let cachedHr = [];
 let cachedSummary = [];
 
 // ============================================================
-// タブ切り替え
+// JSONP fetch（CORSを回避）
 // ============================================================
+function fetchJSONP(url) {
+  return new Promise(function(resolve, reject) {
+    const cbName = 'skg_cb_' + Date.now();
+    const script = document.createElement('script');
+    const timeout = setTimeout(function() {
+      cleanup();
+      reject(new Error('タイムアウト（30秒）'));
+    }, 30000);
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      if (script.parentNode) document.body.removeChild(script);
+    }
+    window[cbName] = function(data) {
+      cleanup();
+      resolve(data);
+    };
+    script.onerror = function() {
+      cleanup();
+      reject(new Error('スクリプト読み込みエラー'));
+    };
+    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
+    document.body.appendChild(script);
+  });
+}
 function showTab(id, el) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -226,8 +251,8 @@ function showTab(id, el) {
 async function init() {
   setStatus('年月一覧を読み込み中...', true);
   try {
-    const res = await fetch(GAS_URL + '?type=months');
-    const data = await res.json();
+    const res = await fetchJSONP(GAS_URL + '?type=months');
+    const data = res;
     const months = (data.months || []).sort().reverse();
     const sel = document.getElementById('ym-select');
     sel.innerHTML = '';
@@ -257,12 +282,10 @@ async function loadAll() {
   setStatus('データを読み込み中...', true);
 
   try {
-    const [summaryRes, allRes] = await Promise.all([
-      fetch(GAS_URL + '?type=summary&ym=' + ym),
-      fetch(GAS_URL + '?type=all&ym=' + ym)
+    const [summaryData, allData] = await Promise.all([
+      fetchJSONP(GAS_URL + '?type=summary&ym=' + ym),
+      fetchJSONP(GAS_URL + '?type=all&ym=' + ym)
     ]);
-    const summaryData = await summaryRes.json();
-    const allData = await allRes.json();
 
     if (summaryData.status === 'error') throw new Error(summaryData.message);
 
