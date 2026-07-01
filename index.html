@@ -219,8 +219,8 @@ function fetchJSONP(url) {
     const script = document.createElement('script');
     const timeout = setTimeout(function() {
       cleanup();
-      reject(new Error('タイムアウト（30秒）'));
-    }, 30000);
+      reject(new Error('タイムアウト（60秒）'));
+    }, 60000);
     function cleanup() {
       clearTimeout(timeout);
       delete window[cbName];
