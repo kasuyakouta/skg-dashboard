@@ -307,7 +307,7 @@ async function loadAll() {
       if (completed === 1) renderSummary();
     }).catch(function(err) {
       completed++;
-      Logger.log && Logger.log(dept + ' エラー: ' + err.message);
+      console.warn(dept + ' エラー: ' + err.message);
     });
   });
 
