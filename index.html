@@ -471,16 +471,30 @@ function renderHr() {
   body.innerHTML = html || '<div class="empty">コメントがありません</div>';
 }
 
-// ============================================================
-// 部署選択変更ハンドラ
-// ============================================================
-let trendChart = null;
-let cachedTrend = {};  // { dept: records[] }
+// 各部署のグラフデフォルト設定
+// key: 品目名||指標名（完全一致）/ filterFn: 複数品目を合算
+const DEPT_DEFAULT_CHART = {
+  "地域インフラ共創部1課":  { label:"全品目 粗利益合計", filterFn: function(r){ return r.metric==="粗利益"; } },
+  "地域インフラ共創部2課":  { key:"RPS_合計||数量" },
+  "感動デザイン課":         { label:"キング＋BOX 数量合計", filterFn: function(r){ return r.metric==="数量"; } },
+  "総合クリエイト課":       null,
+  "トータルメンテナンス課": null,
+  "Re\"バース仙台港":       { label:"全設備 数量合計", filterFn: function(r){ return r.metric==="数量"; } },
+  "Re\"バース仙台岩切":     { key:"段ボール||数量" },
+  "Re\"バース仙台扇町":     { key:"古紙合計||数量" },
+};
 
-const FY_MONTHS = [
-  "2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
-  "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"
-];
+// カードのデフォルト表示指標（この指標のカードをデフォルト表示）
+const DEPT_DEFAULT_METRIC = {
+  "地域インフラ共創部1課":  "粗利益",
+  "地域インフラ共創部2課":  "数量",
+  "感動デザイン課":         "数量",
+  "総合クリエイト課":       null,
+  "トータルメンテナンス課": null,
+  "Re\"バース仙台港":       "数量",
+  "Re\"バース仙台岩切":     "数量",
+  "Re\"バース仙台扇町":     "数量",
+};
 
 async function onDeptChange() {
   const dept = document.getElementById('dept-select').value;
@@ -518,14 +532,32 @@ async function onDeptChange() {
     });
   }
 
-  // 品目プルダウンを更新
+  // デフォルト設定を先頭に追加してから品目プルダウンを構築
+  const def = DEPT_DEFAULT_CHART[dept];
   const itemKeys = [...new Set(cachedTrend[dept].map(function(r){
     return r.item + '||' + r.metric;
   }))];
-  itemSel.innerHTML = itemKeys.map(function(k) {
+
+  let optionsHtml = '';
+  // デフォルト（合計）選択肢を先頭に追加
+  if (def && def.filterFn) {
+    optionsHtml += '<option value="__default__">' + def.label + '</option>';
+  }
+  optionsHtml += itemKeys.map(function(k) {
     const parts = k.split('||');
     return '<option value="' + esc(k) + '">' + parts[0] + '（' + parts[1] + '）</option>';
   }).join('');
+  itemSel.innerHTML = optionsHtml;
+
+  // デフォルト品目を自動選択
+  if (def) {
+    if (def.filterFn) {
+      itemSel.value = '__default__';
+    } else if (def.key) {
+      itemSel.value = def.key;
+      if (!itemSel.value) itemSel.selectedIndex = 0; // なければ先頭
+    }
+  }
 
   document.getElementById('chart-status').textContent = '';
   renderChart();
@@ -539,33 +571,64 @@ function renderChart() {
   const itemKey = document.getElementById('item-select').value;
   if (!dept || !itemKey || !cachedTrend[dept]) return;
 
-  const [selItem, selMetric] = itemKey.split('||');
-  const records = cachedTrend[dept].filter(r => r.item === selItem && r.metric === selMetric);
-  if (!records.length) return;
-
   const FY = 2026;
   const MONTHS = ["04","05","06","07","08","09","10","11","12","01","02","03"];
   const YEARS  = [FY,FY,FY,FY,FY,FY,FY,FY,FY,FY+1,FY+1,FY+1];
-  const labels  = MONTHS.map((m,i) => YEARS[i] + '/' + m);
-  const targets = MONTHS.map((m,i) => {
-    const ym = YEARS[i] + '-' + m;
-    const r = records.find(x => x.ym === ym);
-    return (r && r.target != null && r.target !== 0) ? r.target : null;
-  });
-  const actuals = MONTHS.map((m,i) => {
-    const ym = YEARS[i] + '-' + m;
-    const r = records.find(x => x.ym === ym);
-    return (r && r.actual != null && r.actual !== 0) ? r.actual : null;
-  });
+  const labels  = MONTHS.map(function(m,i){ return YEARS[i] + '/' + m; });
 
-  const unit = records[0].unit || '';
-  document.getElementById('chart-title').textContent =
-    dept + ' ｜ ' + selItem + '（' + selMetric + '・' + unit + '）月次推移';
+  let records, chartLabel, unit;
+  const def = DEPT_DEFAULT_CHART[dept];
+
+  if (itemKey === '__default__' && def && def.filterFn) {
+    // 合計モード：filterFnに一致する全品目を月ごとに合算
+    const filtered = cachedTrend[dept].filter(def.filterFn);
+    unit = filtered.length ? (filtered[0].unit || '') : '';
+    chartLabel = def.label;
+    // 月ごとに集計
+    const targetByYm = {}, actualByYm = {};
+    filtered.forEach(function(r) {
+      if (!targetByYm[r.ym]) targetByYm[r.ym] = 0;
+      if (!actualByYm[r.ym]) actualByYm[r.ym] = 0;
+      if (typeof r.target === 'number') targetByYm[r.ym] += r.target;
+      if (typeof r.actual === 'number') actualByYm[r.ym] += r.actual;
+    });
+    var targets = MONTHS.map(function(m,i){
+      const ym = YEARS[i]+'-'+m;
+      return targetByYm[ym] || null;
+    });
+    var actuals = MONTHS.map(function(m,i){
+      const ym = YEARS[i]+'-'+m;
+      return actualByYm[ym] || null;
+    });
+    drawChart(labels, targets, actuals, dept, chartLabel, unit);
+  } else {
+    // 単一品目モード
+    const [selItem, selMetric] = itemKey.split('||');
+    records = cachedTrend[dept].filter(function(r){
+      return r.item === selItem && r.metric === selMetric;
+    });
+    if (!records.length) return;
+    unit = records[0].unit || '';
+    chartLabel = selItem + '（' + selMetric + '・' + unit + '）';
+    var targets = MONTHS.map(function(m,i){
+      const ym = YEARS[i]+'-'+m;
+      const r = records.find(function(x){ return x.ym===ym; });
+      return (r && r.target != null && r.target !== 0) ? r.target : null;
+    });
+    var actuals = MONTHS.map(function(m,i){
+      const ym = YEARS[i]+'-'+m;
+      const r = records.find(function(x){ return x.ym===ym; });
+      return (r && r.actual != null && r.actual !== 0) ? r.actual : null;
+    });
+    drawChart(labels, targets, actuals, dept, chartLabel, unit);
+  }
+}
+
+function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
+  document.getElementById('chart-title').textContent = dept + ' ｜ ' + chartLabel + ' 月次推移';
   document.getElementById('chart-status').textContent = '';
-
   const ctx = document.getElementById('trend-chart').getContext('2d');
   if (trendChart) trendChart.destroy();
-
   trendChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -574,11 +637,11 @@ function renderChart() {
         {
           label: '目標',
           data: targets,
-          borderColor: 'rgba(46,134,193,0.7)',
+          borderColor: 'rgba(46,134,193,0.8)',
           backgroundColor: 'transparent',
           borderWidth: 2,
-          borderDash: [6, 4],        // 点線
-          pointBackgroundColor: 'rgba(46,134,193,0.7)',
+          borderDash: [6, 4],
+          pointBackgroundColor: 'rgba(46,134,193,0.8)',
           pointRadius: 3,
           tension: 0.3,
           spanGaps: true
@@ -589,7 +652,7 @@ function renderChart() {
           borderColor: '#E67E22',
           backgroundColor: 'rgba(230,126,34,0.08)',
           borderWidth: 2.5,
-          borderDash: [],             // 実線
+          borderDash: [],
           pointBackgroundColor: '#E67E22',
           pointRadius: 4,
           tension: 0.3,
@@ -605,14 +668,14 @@ function renderChart() {
         legend: { position: 'top' },
         tooltip: {
           callbacks: {
-            label: ctx => ctx.dataset.label + ': ' + fmtNum(ctx.raw) + unit
+            label: function(ctx){ return ctx.dataset.label + ': ' + fmtNum(ctx.raw) + unit; }
           }
         }
       },
       scales: {
         y: {
           beginAtZero: false,
-          ticks: { callback: v => fmtNum(v) }
+          ticks: { callback: function(v){ return fmtNum(v); } }
         }
       }
     }
@@ -620,13 +683,13 @@ function renderChart() {
 }
 
 // ============================================================
-// 部署別実績描画
+// 部署別実績描画（デフォルト指標のみ表示・折りたたみ対応）
 // ============================================================
 function renderPerfDetail() {
   const selectedDept = document.getElementById('dept-select').value;
   const body = document.getElementById('perf-body');
   const data = selectedDept
-    ? cachedPerf.filter(r => r.dept === selectedDept)
+    ? cachedPerf.filter(function(r){ return r.dept === selectedDept; })
     : cachedPerf;
 
   if (!data.length) {
@@ -636,7 +699,7 @@ function renderPerfDetail() {
 
   // 品目×指標でグループ化
   const groups = {};
-  data.forEach(r => {
+  data.forEach(function(r) {
     const key = r.dept + '||' + r.item + '||' + r.metric;
     if (!groups[key]) groups[key] = { dept: r.dept, item: r.item, metric: r.metric, unit: r.unit, rows: [] };
     groups[key].rows.push(r);
@@ -644,35 +707,76 @@ function renderPerfDetail() {
 
   let html = '';
   let prevDept = '';
-  Object.values(groups).forEach(g => {
-    if (g.dept !== prevDept) {
-      if (prevDept) html += '</div></div>';
-      html += `<div class="card"><h2>${g.dept}</h2><div class="grid-2">`;
-      prevDept = g.dept;
-    }
-    const target = g.rows[0].target;
-    const actual = g.rows[0].actual;
-    const rate = (target && actual) ? Math.round(actual / target * 100) : null;
-    let badgeCls = 'rate-na';
-    if (rate !== null) {
-      if (rate >= 100) badgeCls = 'rate-over';
-      else if (rate >= 80) badgeCls = 'rate-near';
-      else badgeCls = 'rate-low';
-    }
-    html += `<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#F8FAFC">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">${g.item}（${g.metric}）</div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <span style="font-size:13px;color:var(--muted)">目標：</span><strong>${fmtNum(target)}${g.unit}</strong>
-          <span style="margin:0 6px;color:var(--border)">|</span>
-          <span style="font-size:13px;color:var(--muted)">実績：</span><strong>${fmtNum(actual)}${g.unit}</strong>
-        </div>
-        <span class="rate-badge ${badgeCls}">${rate !== null ? rate + '%' : '-'}</span>
-      </div>
-    </div>`;
+  const deptGroups = {};
+
+  // 部署ごとにグループをまとめる
+  Object.values(groups).forEach(function(g) {
+    if (!deptGroups[g.dept]) deptGroups[g.dept] = [];
+    deptGroups[g.dept].push(g);
   });
-  if (prevDept) html += '</div></div>';
+
+  Object.keys(deptGroups).forEach(function(dept) {
+    const gs = deptGroups[dept];
+    const defaultMetric = DEPT_DEFAULT_METRIC[dept];
+
+    // デフォルト表示グループと詳細グループに分離
+    const defaultGs = defaultMetric ? gs.filter(function(g){ return g.metric === defaultMetric; }) : gs;
+    const detailGs  = defaultMetric ? gs.filter(function(g){ return g.metric !== defaultMetric; }) : [];
+
+    html += '<div class="card"><h2>' + dept + '</h2>';
+
+    // デフォルト表示（主要指標カード）
+    html += '<div class="grid-2">';
+    defaultGs.forEach(function(g) { html += makeCard(g); });
+    html += '</div>';
+
+    // 詳細（折りたたみ）
+    if (detailGs.length > 0) {
+      const uid = dept.replace(/[^a-zA-Z0-9]/g, '_');
+      html += '<div style="margin-top:12px">'
+        + '<button onclick="toggleDetail(\'' + uid + '\')" id="btn_' + uid + '" style="'
+        + 'font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 0;">'
+        + '▶ その他の指標を表示</button>'
+        + '<div id="detail_' + uid + '" style="display:none;margin-top:10px;">'
+        + '<div class="grid-2">';
+      detailGs.forEach(function(g) { html += makeCard(g); });
+      html += '</div></div></div>';
+    }
+
+    html += '</div>';
+  });
+
   body.innerHTML = html;
+}
+
+function makeCard(g) {
+  const target = g.rows[0].target;
+  const actual = g.rows[0].actual;
+  const rate = (target && actual) ? Math.round(actual / target * 100) : null;
+  let badgeCls = 'rate-na';
+  if (rate !== null) {
+    if (rate >= 100) badgeCls = 'rate-over';
+    else if (rate >= 80) badgeCls = 'rate-near';
+    else badgeCls = 'rate-low';
+  }
+  return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#F8FAFC;margin-bottom:8px">'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">' + g.item + '（' + g.metric + '）</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center">'
+    + '<div>'
+    + '<span style="font-size:13px;color:var(--muted)">目標：</span><strong>' + fmtNum(target) + g.unit + '</strong>'
+    + '<span style="margin:0 6px;color:var(--border)">|</span>'
+    + '<span style="font-size:13px;color:var(--muted)">実績：</span><strong>' + fmtNum(actual) + g.unit + '</strong>'
+    + '</div>'
+    + '<span class="rate-badge ' + badgeCls + '">' + (rate !== null ? rate + '%' : '-') + '</span>'
+    + '</div></div>';
+}
+
+function toggleDetail(uid) {
+  const detail = document.getElementById('detail_' + uid);
+  const btn    = document.getElementById('btn_' + uid);
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '▶ その他の指標を表示' : '▼ その他の指標を非表示';
 }
 
 // ============================================================
