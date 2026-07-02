@@ -476,6 +476,11 @@ function renderHr() {
 let trendChart = null;
 let cachedTrend = {};  // { dept: records[] }
 
+const FY_MONTHS = [
+  "2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
+  "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"
+];
+
 async function onDeptChange() {
   const dept = document.getElementById('dept-select').value;
   renderPerfDetail();
@@ -489,29 +494,40 @@ async function onDeptChange() {
     return;
   }
 
-  // グラフカードを表示してデータ取得
   chartCard.style.display = 'block';
   itemSel.style.display = 'inline-block';
   document.getElementById('chart-title').textContent = dept + ' 月次推移';
-  document.getElementById('chart-status').textContent = '読み込み中...';
 
-  try {
-    // キャッシュ済みなら再取得しない
-    if (!cachedTrend[dept]) {
-      const url = GAS_URL + '?type=trend&dept=' + encodeURIComponent(dept);
-      const data = await fetchJSONP(url);
-      cachedTrend[dept] = data.trend || [];
+  // キャッシュ済みなら再取得しない
+  if (!cachedTrend[dept]) {
+    cachedTrend[dept] = [];
+    let loaded = 0;
+    for (var mi = 0; mi < FY_MONTHS.length; mi++) {
+      const ym = FY_MONTHS[mi];
+      document.getElementById('chart-status').textContent =
+        '月次データ取得中... ' + (++loaded) + '/' + FY_MONTHS.length + '（' + ym + '）';
+      try {
+        const url = GAS_URL + '?type=all_cached&ym=' + encodeURIComponent(ym);
+        const data = await fetchJSONP(url);
+        (data.perf || []).filter(function(r){ return r.dept === dept; })
+          .forEach(function(r){ cachedTrend[dept].push(r); });
+      } catch(err) {
+        console.warn(ym + ' 取得失敗: ' + err.message);
+      }
     }
-    // 品目プルダウンを更新
-    const items = [...new Set(cachedTrend[dept].map(r => r.item + '||' + r.metric))];
-    itemSel.innerHTML = items.map(k => {
-      const [item, metric] = k.split('||');
-      return `<option value="${esc(k)}">${item}（${metric}）</option>`;
-    }).join('');
-    renderChart();
-  } catch(err) {
-    document.getElementById('chart-status').textContent = '取得失敗: ' + err.message;
   }
+
+  // 品目プルダウンを更新
+  const itemKeys = [...new Set(cachedTrend[dept].map(function(r){
+    return r.item + '||' + r.metric;
+  }))];
+  itemSel.innerHTML = itemKeys.map(function(k) {
+    const parts = k.split('||');
+    return '<option value="' + esc(k) + '">' + parts[0] + '（' + parts[1] + '）</option>';
+  }).join('');
+
+  document.getElementById('chart-status').textContent = '';
+  renderChart();
 }
 
 // ============================================================
