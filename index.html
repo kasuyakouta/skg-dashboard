@@ -164,6 +164,10 @@
 <div class="controls">
   <label>対象年月</label>
   <select id="ym-select" onchange="loadAll()"><option value="">読み込み中...</option></select>
+  <button onclick="loadAll(true)" title="スプレッドシートから最新データを取得" style="
+    padding:6px 12px; border-radius:6px; border:1px solid var(--border);
+    background:#fff; cursor:pointer; font-size:13px; color:var(--muted);
+    transition:all 0.2s;">🔄 最新データに更新</button>
 </div>
 
 <main>
@@ -276,7 +280,7 @@ async function init() {
 // ============================================================
 // メイン：全データを取得して表示
 // ============================================================
-async function loadAll() {
+async function loadAll(nocache) {
   const ym = document.getElementById('ym-select').value;
   if (!ym) return;
   document.getElementById('header-ym').textContent = ym;
@@ -290,11 +294,12 @@ async function loadAll() {
     "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
   ];
 
-  setStatus('読み込み中...', true);
+  setStatus(nocache ? 'スプレッドシートから最新データを取得中...' : '読み込み中...', true);
 
   try {
     // 全部署を1回のAPIコールで取得（キャッシュ一括返却）
-    const url = GAS_URL + '?type=all_cached&ym=' + encodeURIComponent(ym);
+    const url = GAS_URL + '?type=all_cached&ym=' + encodeURIComponent(ym)
+                        + (nocache ? '&nocache=1' : '');
     const data = await fetchJSONP(url);
 
     if (data && data.perf) data.perf.forEach(function(r){ cachedPerf.push(r); });
