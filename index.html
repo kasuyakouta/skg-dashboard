@@ -229,9 +229,10 @@ let cachedSummary = [];
 // ============================================================
 // JSONP fetch（CORSを回避）
 // ============================================================
+let _jsonpCounter = 0;
 function fetchJSONP(url) {
   return new Promise(function(resolve, reject) {
-    const cbName = 'skg_cb_' + Date.now();
+    const cbName = 'skg_cb_' + (++_jsonpCounter);
     const script = document.createElement('script');
     const timeout = setTimeout(function() {
       cleanup();
@@ -497,24 +498,24 @@ async function onDeptChange() {
   chartCard.style.display = 'block';
   itemSel.style.display = 'inline-block';
   document.getElementById('chart-title').textContent = dept + ' 月次推移';
+  document.getElementById('chart-status').textContent = '月次データ取得中...';
 
-  // キャッシュ済みなら再取得しない
   if (!cachedTrend[dept]) {
+    // 12ヶ月を並行取得（大幅高速化）
+    const promises = FY_MONTHS.map(function(ym) {
+      const url = GAS_URL + '?type=all_cached&ym=' + encodeURIComponent(ym);
+      return fetchJSONP(url).then(function(data) {
+        return (data.perf || []).filter(function(r){ return r.dept === dept; });
+      }).catch(function(e) {
+        console.warn(ym + ' 取得失敗: ' + e.message);
+        return [];
+      });
+    });
     cachedTrend[dept] = [];
-    let loaded = 0;
-    for (var mi = 0; mi < FY_MONTHS.length; mi++) {
-      const ym = FY_MONTHS[mi];
-      document.getElementById('chart-status').textContent =
-        '月次データ取得中... ' + (++loaded) + '/' + FY_MONTHS.length + '（' + ym + '）';
-      try {
-        const url = GAS_URL + '?type=all_cached&ym=' + encodeURIComponent(ym);
-        const data = await fetchJSONP(url);
-        (data.perf || []).filter(function(r){ return r.dept === dept; })
-          .forEach(function(r){ cachedTrend[dept].push(r); });
-      } catch(err) {
-        console.warn(ym + ' 取得失敗: ' + err.message);
-      }
-    }
+    const results = await Promise.all(promises);
+    results.forEach(function(recs) {
+      recs.forEach(function(r){ cachedTrend[dept].push(r); });
+    });
   }
 
   // 品目プルダウンを更新
@@ -531,7 +532,7 @@ async function onDeptChange() {
 }
 
 // ============================================================
-// グラフ描画（Chart.js）
+// グラフ描画（Chart.js・目標=点線折れ線・実績=実線折れ線）
 // ============================================================
 function renderChart() {
   const dept    = document.getElementById('dept-select').value;
@@ -542,7 +543,6 @@ function renderChart() {
   const records = cachedTrend[dept].filter(r => r.item === selItem && r.metric === selMetric);
   if (!records.length) return;
 
-  // 4月〜3月の順で月ラベルを作成
   const FY = 2026;
   const MONTHS = ["04","05","06","07","08","09","10","11","12","01","02","03"];
   const YEARS  = [FY,FY,FY,FY,FY,FY,FY,FY,FY,FY+1,FY+1,FY+1];
@@ -550,12 +550,12 @@ function renderChart() {
   const targets = MONTHS.map((m,i) => {
     const ym = YEARS[i] + '-' + m;
     const r = records.find(x => x.ym === ym);
-    return r && r.target != null ? r.target : null;
+    return (r && r.target != null && r.target !== 0) ? r.target : null;
   });
   const actuals = MONTHS.map((m,i) => {
     const ym = YEARS[i] + '-' + m;
     const r = records.find(x => x.ym === ym);
-    return r && r.actual != null ? r.actual : null;
+    return (r && r.actual != null && r.actual !== 0) ? r.actual : null;
   });
 
   const unit = records[0].unit || '';
@@ -567,29 +567,34 @@ function renderChart() {
   if (trendChart) trendChart.destroy();
 
   trendChart = new Chart(ctx, {
+    type: 'line',
     data: {
       labels: labels,
       datasets: [
         {
-          type: 'bar',
           label: '目標',
           data: targets,
-          backgroundColor: 'rgba(46,134,193,0.25)',
-          borderColor: 'rgba(46,134,193,0.6)',
-          borderWidth: 1,
-          order: 2
+          borderColor: 'rgba(46,134,193,0.7)',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [6, 4],        // 点線
+          pointBackgroundColor: 'rgba(46,134,193,0.7)',
+          pointRadius: 3,
+          tension: 0.3,
+          spanGaps: true
         },
         {
-          type: 'line',
           label: '実績',
           data: actuals,
           borderColor: '#E67E22',
-          backgroundColor: 'rgba(230,126,34,0.1)',
+          backgroundColor: 'rgba(230,126,34,0.08)',
           borderWidth: 2.5,
+          borderDash: [],             // 実線
           pointBackgroundColor: '#E67E22',
           pointRadius: 4,
           tension: 0.3,
-          order: 1
+          fill: true,
+          spanGaps: true
         }
       ]
     },
