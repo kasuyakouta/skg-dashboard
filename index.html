@@ -515,21 +515,15 @@ async function onDeptChange() {
   document.getElementById('chart-status').textContent = '月次データ取得中...';
 
   if (!cachedTrend[dept]) {
-    // 12ヶ月を並行取得（大幅高速化）
-    const promises = FY_MONTHS.map(function(ym) {
-      const url = GAS_URL + '?type=all_cached&ym=' + encodeURIComponent(ym);
-      return fetchJSONP(url).then(function(data) {
-        return (data.perf || []).filter(function(r){ return r.dept === dept; });
-      }).catch(function(e) {
-        console.warn(ym + ' 取得失敗: ' + e.message);
-        return [];
-      });
-    });
-    cachedTrend[dept] = [];
-    const results = await Promise.all(promises);
-    results.forEach(function(recs) {
-      recs.forEach(function(r){ cachedTrend[dept].push(r); });
-    });
+    document.getElementById('chart-status').textContent = '月次データ取得中...';
+    try {
+      const url = GAS_URL + '?type=trend_cached&dept=' + encodeURIComponent(dept);
+      const data = await fetchJSONP(url);
+      cachedTrend[dept] = data.trend || [];
+    } catch(err) {
+      document.getElementById('chart-status').textContent = '取得失敗: ' + err.message;
+      return;
+    }
   }
 
   // デフォルト設定を先頭に追加してから品目プルダウンを構築
