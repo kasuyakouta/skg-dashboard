@@ -164,10 +164,10 @@
 <div class="controls">
   <label>対象年月</label>
   <select id="ym-select" onchange="loadAll()"><option value="">読み込み中...</option></select>
-  <button onclick="loadAll(true)" title="スプレッドシートから最新データを取得" style="
+  <button onclick="loadAll()" title="最新のフラットログを再読み込み" style="
     padding:6px 12px; border-radius:6px; border:1px solid var(--border);
     background:#fff; cursor:pointer; font-size:13px; color:var(--muted);
-    transition:all 0.2s;">🔄 最新データに更新</button>
+    transition:all 0.2s;">🔄 再読み込み</button>
 </div>
 
 <main>
@@ -309,31 +309,21 @@ async function loadAll(nocache) {
     "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
   ];
 
-  setStatus(nocache ? 'スプレッドシートから最新データを取得中...' : '読み込み中...', true);
+  setStatus(nocache ? '最新データを取得中...' : '読み込み中...', true);
 
   try {
-    // 全部署を1回のAPIコールで取得（キャッシュ一括返却）
-    const url = GAS_URL + '?type=all_cached&ym=' + encodeURIComponent(ym)
-                        + (nocache ? '&nocache=1' : '');
+    // フラットログから全部署を1回のAPIコールで取得（超高速）
+    const url = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym);
     const data = await fetchJSONP(url);
 
     if (data && data.perf) data.perf.forEach(function(r){ cachedPerf.push(r); });
     if (data && data.hr)   data.hr.forEach(function(r){   cachedHr.push(r);   });
 
   } catch(err) {
-    console.warn('一括取得失敗、部署別取得にフォールバック: ' + err.message);
-    // フォールバック：1部署ずつ順次取得
-    for (var i = 0; i < DEPTS.length; i++) {
-      const dept = DEPTS[i];
-      setStatus('読み込み中... ' + (i+1) + '/' + DEPTS.length, true);
-      try {
-        const url = GAS_URL + '?type=all&ym=' + encodeURIComponent(ym)
-                            + '&dept=' + encodeURIComponent(dept);
-        const deptData = await fetchJSONP(url);
-        if (deptData && deptData.perf) deptData.perf.forEach(function(r){ cachedPerf.push(r); });
-        if (deptData && deptData.hr)   deptData.hr.forEach(function(r){   cachedHr.push(r);   });
-      } catch(e) { console.warn(dept + ' スキップ: ' + e.message); }
-    }
+    setStatus('', false);
+    document.getElementById('summary-body').innerHTML =
+      '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+    return;
   }
 
   const DEPT_MAIN = {
@@ -517,7 +507,7 @@ async function onDeptChange() {
   if (!cachedTrend[dept]) {
     document.getElementById('chart-status').textContent = '月次データ取得中...';
     try {
-      const url = GAS_URL + '?type=trend_cached&dept=' + encodeURIComponent(dept);
+      const url = GAS_URL + '?type=trend_flat&dept=' + encodeURIComponent(dept);
       const data = await fetchJSONP(url);
       cachedTrend[dept] = data.trend || [];
     } catch(err) {
