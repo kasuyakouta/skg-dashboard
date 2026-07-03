@@ -145,6 +145,16 @@
     padding: 16px; color: #922B21; font-size: 13px;
   }
 
+  /* 品目タブ */
+  .item-tab {
+    padding: 6px 14px; border-radius: 16px; border: 1px solid var(--border);
+    background: var(--card); color: var(--muted); cursor: pointer;
+    font-size: 12px; transition: all 0.15s; white-space: nowrap;
+  }
+  .item-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .item-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+  .item-tab.default-tab { font-weight: 600; }
+
   /* 空状態 */
   .empty { text-align: center; color: var(--muted); padding: 40px; font-size: 13px; }
 </style>
@@ -201,8 +211,12 @@
         <option value="">全部署（当月カード表示）</option>
       </select>
       <label style="margin-left:8px;">品目</label>
-      <select id="item-select" onchange="renderChart()" style="display:none;">
-      </select>
+      <select id="item-select" onchange="syncItemTabsActive(); renderChart();" style="display:none;"></select>
+    </div>
+
+    <!-- 品目タブ（部署のデフォルト指標で品目ごとにワンクリック切替） -->
+    <div id="item-tabs" style="display:none;margin-bottom:12px;">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;"></div>
     </div>
 
     <!-- 月次推移グラフ -->
@@ -500,6 +514,7 @@ async function onDeptChange() {
   if (!dept) {
     chartCard.style.display = 'none';
     itemSel.style.display = 'none';
+    document.getElementById('item-tabs').style.display = 'none';
     return;
   }
 
@@ -547,8 +562,71 @@ async function onDeptChange() {
     }
   }
 
+  // 品目タブを生成（部署のデフォルト指標で品目ごとにワンクリック切替）
+  renderItemTabs(dept);
+
   document.getElementById('chart-status').textContent = '';
   renderChart();
+}
+
+// ============================================================
+// 品目タブ生成（デフォルト指標のみを対象に、品目ごとにタブ化）
+// ============================================================
+function renderItemTabs(dept) {
+  const tabsWrap = document.getElementById('item-tabs');
+  const tabsInner = tabsWrap.querySelector('div');
+  const defaultMetric = DEPT_DEFAULT_METRIC[dept];
+
+  if (!defaultMetric || !cachedTrend[dept] || !cachedTrend[dept].length) {
+    tabsWrap.style.display = 'none';
+    return;
+  }
+
+  // デフォルト指標に該当する品目一覧（重複なし）
+  const items = [...new Set(
+    cachedTrend[dept]
+      .filter(function(r){ return r.metric === defaultMetric; })
+      .map(function(r){ return r.item; })
+  )];
+
+  if (!items.length) {
+    tabsWrap.style.display = 'none';
+    return;
+  }
+
+  const def = DEPT_DEFAULT_CHART[dept];
+  let html = '';
+
+  // 合計タブ（filterFnがある部署のみ）
+  if (def && def.filterFn) {
+    html += '<div class="item-tab default-tab" data-key="__default__" onclick="selectItemTab(\'__default__\')">'
+      + '📊 ' + esc(def.label) + '</div>';
+  }
+
+  items.forEach(function(item) {
+    const key = item + '||' + defaultMetric;
+    html += '<div class="item-tab" data-key="' + esc(key) + '" onclick="selectItemTab(\'' + esc(key) + '\')">'
+      + esc(item) + '</div>';
+  });
+
+  tabsInner.innerHTML = html;
+  tabsWrap.style.display = 'block';
+  syncItemTabsActive();
+}
+
+// タブクリック → プルダウンと連動してグラフ更新
+function selectItemTab(key) {
+  document.getElementById('item-select').value = key;
+  syncItemTabsActive();
+  renderChart();
+}
+
+// プルダウン変更時にタブのハイライトも同期
+function syncItemTabsActive() {
+  const currentKey = document.getElementById('item-select').value;
+  document.querySelectorAll('#item-tabs .item-tab').forEach(function(tab) {
+    tab.classList.toggle('active', tab.dataset.key === currentKey);
+  });
 }
 
 // ============================================================
