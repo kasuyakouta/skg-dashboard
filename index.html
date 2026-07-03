@@ -209,6 +209,11 @@
 
   /* 空状態 */
   .empty { text-align: center; color: var(--muted); padding: 40px; font-size: 13px; }
+
+  /* AIレポート */
+  .report-card { margin-bottom: 16px; }
+  .report-text { white-space: pre-line; font-size: 13px; line-height: 1.8; color: var(--text); }
+  .report-meta { font-size: 11px; color: var(--muted2); margin-top: 10px; text-align: right; }
 </style>
 </head>
 <body>
@@ -237,6 +242,7 @@
     <div class="tab active" onclick="showTab('tab-summary', this)">📋 全部署サマリー</div>
     <div class="tab" onclick="showTab('tab-hr', this)">👥 人事コメント</div>
     <div class="tab" onclick="showTab('tab-perf', this)">📈 部署別実績</div>
+    <div class="tab" onclick="showTab('tab-report', this)">📝 AIレポート</div>
   </div>
 
   <!-- サマリータブ -->
@@ -281,6 +287,11 @@
     <!-- 当月品目別カード -->
     <div id="perf-body"><div class="empty">データがありません</div></div>
   </div>
+
+  <!-- AIレポートタブ -->
+  <div id="tab-report" class="tab-content">
+    <div id="report-body"><div class="empty">この月のAIレポートはまだ生成されていません</div></div>
+  </div>
 </main>
 
 <script>
@@ -289,6 +300,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbybAvXkNCx9avzHmPW9HfTh
 let cachedPerf = [];
 let cachedHr = [];
 let cachedSummary = [];
+let cachedReports = [];
 
 // ============================================================
 // JSONP fetch（CORSを回避）
@@ -429,6 +441,15 @@ async function loadAll(nocache) {
   renderHr();
   renderPerfDetail();
 
+  try {
+    const reportUrl = GAS_URL + '?type=reports&ym=' + encodeURIComponent(ym);
+    const reportData = await fetchJSONP(reportUrl);
+    cachedReports = (reportData && reportData.reports) ? reportData.reports : [];
+  } catch (err) {
+    cachedReports = [];
+  }
+  renderReports();
+
   const deptSel = document.getElementById('dept-select');
   deptSel.innerHTML = '<option value="">全部署</option>';
   DEPTS.forEach(function(d) {
@@ -567,6 +588,27 @@ function renderHr() {
     html += '</div></div>';
   });
   body.innerHTML = html || '<div class="empty">コメントがありません</div>';
+}
+
+// ============================================================
+// AIレポート描画
+// ============================================================
+function renderReports() {
+  const body = document.getElementById('report-body');
+  if (!cachedReports.length) {
+    body.innerHTML = '<div class="empty">この月のAIレポートはまだ生成されていません</div>';
+    return;
+  }
+  let html = '';
+  cachedReports.forEach(function(r) {
+    const genDate = r.generatedAt ? new Date(r.generatedAt).toLocaleString('ja-JP') : '';
+    html += '<div class="card report-card">'
+      + '<h2>' + esc(r.dept) + '</h2>'
+      + '<div class="report-text">' + esc(r.reportText) + '</div>'
+      + '<div class="report-meta">生成日時: ' + esc(genDate) + '</div>'
+      + '</div>';
+  });
+  body.innerHTML = html;
 }
 
 // グラフ用のグローバル変数
