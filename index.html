@@ -160,7 +160,10 @@
   .hr-item.cat-enter  { border-left-color: #8E64AD; }
   .hr-field { padding: 10px 12px; border-right: 1px solid var(--border); }
   .hr-field:last-child { border-right: none; }
-  .hr-field-label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .hr-field-label { display: none; }
+  @media (max-width: 640px) {
+    .hr-field-label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  }
   .hr-field-value { font-size: 13px; color: var(--text); line-height: 1.5; }
   .hr-field-value.hr-status-完了   { color: var(--success-text); font-weight: 600; }
   .hr-field-value.hr-status-対応中 { color: var(--warning-text); font-weight: 600; }
@@ -575,7 +578,7 @@ let cachedTrend = {};  // { dept: records[] }
 const DEPT_DEFAULT_CHART = {
   "地域インフラ共創部1課":  { label:"全品目 粗利益合計", filterFn: function(r){ return r.metric==="粗利益"; } },
   "地域インフラ共創部2課":  { key:"RPS_合計||数量" },
-  "感動デザイン課":         { label:"キング＋BOX 数量合計", filterFn: function(r){ return r.metric==="数量"; } },
+  "感動デザイン課":         { key:"キング||数量" },
   "総合クリエイト課":       null,
   "トータルメンテナンス課": null,
   "Re\"バース仙台港":       { label:"全設備 数量合計", filterFn: function(r){ return r.metric==="数量"; } },
