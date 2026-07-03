@@ -461,6 +461,10 @@ function renderHr() {
   body.innerHTML = html || '<div class="empty">コメントがありません</div>';
 }
 
+// グラフ用のグローバル変数
+let trendChart = null;
+let cachedTrend = {};  // { dept: records[] }
+
 // 各部署のグラフデフォルト設定
 // key: 品目名||指標名（完全一致）/ filterFn: 複数品目を合算
 const DEPT_DEFAULT_CHART = {
