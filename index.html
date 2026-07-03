@@ -145,29 +145,43 @@
   .grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
   @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
 
-  /* 人事カード */
-  .hr-list { display: flex; flex-direction: column; gap: 10px; }
+  /* 人事カード（表形式：対象者/カテゴリ/内容/対応状況を項目見出しで固定） */
+  .hr-list { display: flex; flex-direction: column; gap: 8px; }
   .hr-item {
-    padding: 12px 14px; border-radius: 8px; border-left: 4px solid var(--accent);
-    background: #F8FAFC;
+    display: grid;
+    grid-template-columns: 110px 130px 1fr 90px;
+    gap: 0; align-items: stretch;
+    border-radius: 8px; border-left: 4px solid var(--accent);
+    background: #F8FAFC; overflow: hidden;
   }
   .hr-item.cat-good   { border-left-color: var(--success); }
   .hr-item.cat-bad    { border-left-color: var(--warning); }
   .hr-item.cat-safety { border-left-color: var(--danger); }
-  .hr-item.cat-enter  { border-left-color: #8E44AD; }
-  .hr-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-  .hr-meta .tag {
-    font-size: 11px; padding: 2px 8px; border-radius: 10px;
-    background: #E8EDF2; color: var(--muted);
+  .hr-item.cat-enter  { border-left-color: #8E64AD; }
+  .hr-field { padding: 10px 12px; border-right: 1px solid var(--border); }
+  .hr-field:last-child { border-right: none; }
+  .hr-field-label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .hr-field-value { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .hr-field-value.hr-status-完了   { color: var(--success-text); font-weight: 600; }
+  .hr-field-value.hr-status-対応中 { color: var(--warning-text); font-weight: 600; }
+  .hr-field-value.hr-status-未対応 { color: var(--danger-text); font-weight: 600; }
+  .hr-list-head {
+    display: grid; grid-template-columns: 110px 130px 1fr 90px;
+    padding: 0 0 4px; margin-bottom: 2px;
   }
-  .hr-content { font-size: 13px; line-height: 1.6; color: var(--text); }
-  .hr-target { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hr-list-head span { font-size: 11px; color: var(--muted); padding: 0 12px; font-weight: 600; }
+  @media (max-width: 640px) {
+    .hr-item, .hr-list-head { grid-template-columns: 1fr; }
+    .hr-field { border-right: none; border-bottom: 1px solid var(--border); }
+    .hr-field:last-child { border-bottom: none; }
+    .hr-list-head { display: none; }
+  }
 
   /* グラフキャンバス */
   .chart-wrap { position: relative; height: 280px; }
-  .chart-canvas-wrap { position: relative; height: 340px; }
-  @media (max-width: 768px) { .chart-canvas-wrap { height: 260px; } }
-  @media (min-width: 1800px) { .chart-canvas-wrap { height: 400px; } }
+  .chart-canvas-wrap { position: relative; height: 300px; padding-bottom: 8px; }
+  @media (max-width: 768px) { .chart-canvas-wrap { height: 240px; } }
+  @media (min-width: 1800px) { .chart-canvas-wrap { height: 360px; } }
 
   /* エラー表示 */
   .error-box {
@@ -522,6 +536,8 @@ function renderHr() {
     '頑張り・好事例': 'cat-good',
     '安全衛生（事故・労災）': 'cat-safety',
     '問題行動・クレーム対応': 'cat-bad',
+    '安全衛生': 'cat-safety',
+    '問題行動・クレーム': 'cat-bad',
     '入退社・異動': 'cat-enter',
   };
   const depts = [...new Set(cachedHr.map(r => r.dept))];
@@ -529,20 +545,21 @@ function renderHr() {
   depts.forEach(dept => {
     const items = cachedHr.filter(r => r.dept === dept && r.content);
     if (!items.length) return;
-    html += `<div style="margin-bottom:20px">
-      <div style="font-weight:600;color:var(--primary);margin-bottom:8px;font-size:14px">◾ ${dept}</div>
-      <div class="hr-list">`;
+    html += '<div style="margin-bottom:20px">'
+      + '<div style="font-weight:600;color:var(--primary);margin-bottom:8px;font-size:14px">◾ ' + esc(dept) + '</div>'
+      + '<div class="hr-list-head">'
+        + '<span>対象者</span><span>カテゴリ</span><span>内容</span><span>対応状況</span>'
+      + '</div>'
+      + '<div class="hr-list">';
     items.forEach(item => {
       const cls = catClass[item.category] || '';
-      html += `<div class="hr-item ${cls}">
-        <div class="hr-meta">
-          <span class="tag">${item.category || '未分類'}</span>
-          ${item.unit ? '<span class="tag">' + item.unit + '</span>' : ''}
-          ${item.status ? '<span class="tag">' + item.status + '</span>' : ''}
-        </div>
-        <div class="hr-content">${esc(item.content)}</div>
-        ${item.targetPerson ? '<div class="hr-target">対象：' + esc(item.targetPerson) + '</div>' : ''}
-      </div>`;
+      const statusCls = item.status ? 'hr-status-' + item.status : '';
+      html += '<div class="hr-item ' + cls + '">'
+        + '<div class="hr-field"><span class="hr-field-label">対象者</span><span class="hr-field-value">' + (item.targetPerson ? esc(item.targetPerson) : '-') + '</span></div>'
+        + '<div class="hr-field"><span class="hr-field-label">カテゴリ</span><span class="hr-field-value">' + esc(item.category || '未分類') + '</span></div>'
+        + '<div class="hr-field"><span class="hr-field-label">内容</span><span class="hr-field-value">' + esc(item.content) + '</span></div>'
+        + '<div class="hr-field"><span class="hr-field-label">対応状況</span><span class="hr-field-value ' + statusCls + '">' + (item.status ? esc(item.status) : '-') + '</span></div>'
+        + '</div>';
     });
     html += '</div></div>';
   });
@@ -804,6 +821,7 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { bottom: 4, right: 8 } },
       plugins: {
         legend: { position: 'top' },
         tooltip: {
@@ -813,6 +831,9 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
         }
       },
       scales: {
+        x: {
+          ticks: { maxRotation: 0, autoSkipPadding: 8 }
+        },
         y: {
           beginAtZero: false,
           ticks: { callback: function(v){ return fmtNum(v); } }
