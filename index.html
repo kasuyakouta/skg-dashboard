@@ -297,6 +297,10 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbybAvXkNCx9avzHmPW9HfThs7Z6o5tHHoC_QkfFcYLXbodTRUhuwbK8tpjno1SYo56_9g/exec";
 
+// GAS側 getAvailableMonths_() と同じ内容（通信失敗時のフォールバック用）
+const FALLBACK_MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
+                         "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
+
 let cachedPerf = [];
 let cachedHr = [];
 let cachedSummary = [];
@@ -344,13 +348,23 @@ function showTab(id, el) {
 async function init() {
   setStatus('年月一覧を読み込み中...', true);
   try {
-    const res = await fetchJSONP(GAS_URL + '?type=months');
+    let res;
+    try {
+      res = await fetchJSONP(GAS_URL + '?type=months');
+    } catch (firstErr) {
+      // 1回だけリトライ（初回アクセス時のGAS起動待ちによる遅延を吸収）
+      res = await fetchJSONP(GAS_URL + '?type=months');
+    }
     const data = res;
     const months = (data.months || []).sort().reverse();
     const sel = document.getElementById('ym-select');
     sel.innerHTML = '';
     if (months.length === 0) {
-      sel.innerHTML = '<option value="2026-06">2026-06（手動入力）</option>';
+      [...FALLBACK_MONTHS].sort().reverse().forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        sel.appendChild(opt);
+      });
     } else {
       months.forEach(m => {
         const opt = document.createElement('option');
@@ -363,7 +377,13 @@ async function init() {
     loadAll();
   } catch(e) {
     setStatus('', false);
-    document.getElementById('ym-select').innerHTML = '<option value="2026-06">2026-06</option>';
+    const sel = document.getElementById('ym-select');
+    sel.innerHTML = '';
+    [...FALLBACK_MONTHS].sort().reverse().forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      sel.appendChild(opt);
+    });
     loadAll();
   }
 }
