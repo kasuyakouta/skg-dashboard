@@ -433,9 +433,20 @@ async function loadAll(nocache) {
     "Re\"バース仙台扇町":     { metric:"数量",   unit:"t"    },
   };
 
+  // 部署によっては「合計」品目と「内訳品目」が両方記録されており、
+  // 単純合算すると二重カウントになるため、集計対象の品目を制限する
+  // （未定義の部署は従来通り全品目を合算）
+  const DEPT_SUMMARY_ITEMS = {
+    "Re\"バース仙台扇町": ["古紙合計", "代納", "廃棄物"],
+  };
+
   // サマリー計算（全部署分）
   cachedSummary = DEPTS.map(function(dept) {
-    const recs = cachedPerf.filter(function(r){ return r.dept === dept; });
+    const allRecs = cachedPerf.filter(function(r){ return r.dept === dept; });
+    const summaryItems = DEPT_SUMMARY_ITEMS[dept];
+    const recs = summaryItems
+      ? allRecs.filter(function(r){ return summaryItems.includes(r.item); })
+      : allRecs;
     const mainDef = DEPT_MAIN[dept] || { metric:"数量", unit:null };
     let totalTarget=0, totalActual=0, itemCount=0;
     recs.forEach(function(r){
