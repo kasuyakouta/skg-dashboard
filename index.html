@@ -451,12 +451,16 @@ async function loadAll(nocache) {
   renderReports();
 
   const deptSel = document.getElementById('dept-select');
+  const prevDept = deptSel.value;
   deptSel.innerHTML = '<option value="">全部署</option>';
   DEPTS.forEach(function(d) {
     const opt = document.createElement('option');
     opt.value = d; opt.textContent = d;
     deptSel.appendChild(opt);
   });
+  if (prevDept && DEPTS.includes(prevDept)) {
+    deptSel.value = prevDept;
+  }
 
   document.getElementById('header-ym').textContent =
     ym + '（実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件）';
