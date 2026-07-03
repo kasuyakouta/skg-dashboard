@@ -28,10 +28,14 @@
     background: var(--primary); color: #fff;
     padding: 14px 24px; display: flex; align-items: center;
     justify-content: space-between; position: sticky; top: 0; z-index: 100;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); flex-wrap: wrap; gap: 6px;
   }
   header h1 { font-size: 18px; font-weight: 600; }
   header span { font-size: 12px; opacity: 0.8; }
+  @media (max-width: 480px) {
+    header { padding: 10px 16px; }
+    header h1 { font-size: 15px; }
+  }
 
   /* コントロールバー */
   .controls {
@@ -63,7 +67,9 @@
   #loading-text { font-size: 14px; color: var(--muted); }
 
   /* メインレイアウト */
-  main { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
+  main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+  @media (min-width: 1800px) { main { max-width: 1800px; } }
+  @media (max-width: 768px)  { main { padding: 14px 16px; } }
 
   /* タブ */
   .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -115,7 +121,7 @@
   .progress-bar  { height: 100%; border-radius: 4px; transition: width 0.4s; }
 
   /* グリッド */
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
   @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
 
   /* 人事カード */
@@ -138,6 +144,9 @@
 
   /* グラフキャンバス */
   .chart-wrap { position: relative; height: 280px; }
+  .chart-canvas-wrap { position: relative; height: 340px; }
+  @media (max-width: 768px) { .chart-canvas-wrap { height: 260px; } }
+  @media (min-width: 1800px) { .chart-canvas-wrap { height: 400px; } }
 
   /* エラー表示 */
   .error-box {
@@ -146,10 +155,15 @@
   }
 
   /* 品目タブ */
+  #item-tabs { overflow-x: auto; padding-bottom: 4px; }
+  #item-tabs > div { display: flex; flex-wrap: wrap; gap: 6px; min-width: max-content; }
+  @media (min-width: 900px) {
+    #item-tabs > div { flex-wrap: wrap; min-width: 0; }
+  }
   .item-tab {
     padding: 6px 14px; border-radius: 16px; border: 1px solid var(--border);
     background: var(--card); color: var(--muted); cursor: pointer;
-    font-size: 12px; transition: all 0.15s; white-space: nowrap;
+    font-size: 12px; transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
   }
   .item-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .item-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
@@ -191,7 +205,7 @@
   <div id="tab-summary" class="tab-content active">
     <div class="card">
       <h2>全部署 達成率サマリー</h2>
-      <div id="summary-body"><div class="empty">データがありません</div></div>
+      <div id="summary-body" style="overflow-x:auto;"><div class="empty">データがありません</div></div>
     </div>
   </div>
 
@@ -215,14 +229,14 @@
     </div>
 
     <!-- 品目タブ（部署のデフォルト指標で品目ごとにワンクリック切替） -->
-    <div id="item-tabs" style="display:none;margin-bottom:12px;">
-      <div style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    <div id="item-tabs" style="display:none;margin-bottom:12px;overflow-x:auto;padding-bottom:4px;">
+      <div style="display:flex;flex-wrap:nowrap;gap:6px;min-width:max-content;"></div>
     </div>
 
     <!-- 月次推移グラフ -->
     <div id="chart-card" class="card" style="display:none;margin-bottom:16px;">
       <h2 id="chart-title">月次推移</h2>
-      <div style="position:relative;height:300px;">
+      <div class="chart-canvas-wrap">
         <canvas id="trend-chart"></canvas>
       </div>
       <div id="chart-status" style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px;"></div>
