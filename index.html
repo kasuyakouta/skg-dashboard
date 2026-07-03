@@ -9,15 +9,22 @@
   :root {
     --primary: #1F4E78;
     --accent: #2E86C1;
-    --bg: #F4F6F8;
+    --bg: #F7F8FA;
     --card: #FFFFFF;
     --text: #1A1A2E;
     --muted: #6B7280;
-    --border: #E2E8F0;
+    --muted2: #9AA1AC;
+    --border: #E5E9EF;
     --success: #16A085;
+    --success-bg: #E3F5EF;
+    --success-text: #0F6E56;
     --warning: #E67E22;
+    --warning-bg: #FDF3E4;
+    --warning-text: #92610C;
     --danger: #C0392B;
-    --radius: 10px;
+    --danger-bg: #FBEAEA;
+    --danger-text: #96251C;
+    --radius: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
@@ -94,31 +101,45 @@
   .card h2 { font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 14px;
               padding-bottom: 8px; border-bottom: 2px solid var(--border); }
 
-  /* サマリーテーブル */
-  .summary-table { width: 100%; border-collapse: collapse; }
-  .summary-table th {
-    text-align: left; padding: 10px 12px; font-size: 12px;
-    color: var(--muted); border-bottom: 2px solid var(--border);
-    background: #F8FAFC;
+  /* KPIサマリーバー */
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .kpi-card.kpi-danger { background: var(--danger-bg); border-color: transparent; }
+  .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .kpi-value { font-size: 24px; font-weight: 600; color: var(--text); }
+  .kpi-value .kpi-unit { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+  .kpi-danger .kpi-label, .kpi-danger .kpi-value { color: var(--danger-text); }
+
+  /* 部署サマリーカード */
+  .dept-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .dept-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; transition: border-color 0.15s;
   }
-  .summary-table td { padding: 12px 12px; border-bottom: 1px solid var(--border); }
-  .summary-table tr:hover td { background: #F8FAFC; }
-  .summary-table .dept-name { font-weight: 600; }
+  .dept-card.state-danger { border-color: var(--danger); border-width: 1px; }
+  .dept-card.state-empty { opacity: 0.55; }
+  .dept-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 8px; }
+  .dept-card-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .dept-card-metric { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .dept-card-numbers { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  .dept-card-actual { font-size: 20px; font-weight: 600; color: var(--text); }
+  .dept-card-target { font-size: 12px; color: var(--muted); }
+  .dept-card-empty-text { font-size: 13px; color: var(--muted); }
 
   /* 達成率バッジ */
   .rate-badge {
     display: inline-block; padding: 3px 10px; border-radius: 12px;
-    font-size: 12px; font-weight: 600;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
   }
-  .rate-over { background: #D5F5E3; color: #1E8449; }
-  .rate-near { background: #FEF9E7; color: #B7770D; }
-  .rate-low  { background: #FDEDEC; color: #922B21; }
-  .rate-na   { background: #EAECEE; color: #717D7E; }
+  .rate-over { background: var(--success-bg); color: var(--success-text); }
+  .rate-near { background: var(--warning-bg); color: var(--warning-text); }
+  .rate-low  { background: var(--danger-bg); color: var(--danger-text); }
+  .rate-na   { background: #EEF0F3; color: #8A909B; }
 
-  /* プログレスバー */
-  .progress-wrap { background: var(--border); border-radius: 4px; height: 8px;
-                   width: 120px; overflow: hidden; display: inline-block; vertical-align: middle; }
-  .progress-bar  { height: 100%; border-radius: 4px; transition: width 0.4s; }
+  /* プログレスバー（細く・意味で色分け） */
+  .progress-wrap { background: #EEF0F3; border-radius: 3px; height: 5px;
+                   width: 100%; overflow: hidden; display: block; margin-top: 2px; }
+  .progress-bar  { height: 100%; border-radius: 3px; transition: width 0.4s; }
 
   /* グリッド */
   .grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
@@ -203,10 +224,8 @@
 
   <!-- サマリータブ -->
   <div id="tab-summary" class="tab-content active">
-    <div class="card">
-      <h2>全部署 達成率サマリー</h2>
-      <div id="summary-body" style="overflow-x:auto;"><div class="empty">データがありません</div></div>
-    </div>
+    <div id="kpi-row" class="kpi-row"></div>
+    <div id="summary-body"><div class="empty">データがありません</div></div>
   </div>
 
   <!-- 人事コメントタブ -->
@@ -410,43 +429,84 @@ async function loadAll(nocache) {
 // サマリーテーブル描画
 // ============================================================
 function renderSummary(DEPTS_ARG) {
+  const kpiRow = document.getElementById('kpi-row');
+  const body = document.getElementById('summary-body');
+
   if (!cachedSummary.length) {
-    document.getElementById('summary-body').innerHTML = '<div class="empty">データがありません</div>';
+    kpiRow.innerHTML = '';
+    body.innerHTML = '<div class="empty">データがありません</div>';
     return;
   }
-  const sorted = [...cachedSummary].sort((a, b) => {
-    const ra = a.achieveRate || 0, rb = b.achieveRate || 0;
+
+  const withRate = cachedSummary.filter(function(r){ return r.achieveRate !== null; });
+  const achievedCount = withRate.filter(function(r){ return r.achieveRate >= 100; }).length;
+  const dangerCount   = withRate.filter(function(r){ return r.achieveRate < 80; }).length;
+  const avgRate = withRate.length
+    ? Math.round(withRate.reduce(function(s,r){ return s + r.achieveRate; }, 0) / withRate.length * 10) / 10
+    : null;
+  const hrCount = (typeof cachedHr !== 'undefined') ? cachedHr.filter(function(r){ return r.content; }).length : 0;
+
+  kpiRow.innerHTML =
+    '<div class="kpi-card">'
+      + '<div class="kpi-label">達成部署数</div>'
+      + '<div class="kpi-value">' + achievedCount + '<span class="kpi-unit"> / ' + withRate.length + '</span></div>'
+    + '</div>'
+    + '<div class="kpi-card">'
+      + '<div class="kpi-label">平均達成率</div>'
+      + '<div class="kpi-value">' + (avgRate !== null ? avgRate : '-') + '<span class="kpi-unit">%</span></div>'
+    + '</div>'
+    + '<div class="kpi-card' + (dangerCount > 0 ? ' kpi-danger' : '') + '">'
+      + '<div class="kpi-label">要注意（80%未満）</div>'
+      + '<div class="kpi-value">' + dangerCount + '<span class="kpi-unit"> 部署</span></div>'
+    + '</div>'
+    + '<div class="kpi-card">'
+      + '<div class="kpi-label">人事コメント</div>'
+      + '<div class="kpi-value">' + hrCount + '<span class="kpi-unit"> 件</span></div>'
+    + '</div>';
+
+  const sorted = [...cachedSummary].sort(function(a, b) {
+    const ra = a.achieveRate === null ? -1 : a.achieveRate;
+    const rb = b.achieveRate === null ? -1 : b.achieveRate;
     return rb - ra;
   });
-  let html = '<table class="summary-table"><thead><tr>'
-    + '<th>部署名</th><th>主要指標</th><th>目標</th><th>実績</th><th>達成率</th><th>進捗</th>'
-    + '</tr></thead><tbody>';
-  sorted.forEach(row => {
+
+  let html = '<div class="dept-card-grid">';
+  sorted.forEach(function(row) {
     const rate = row.achieveRate;
     const rateStr = rate !== null ? rate + '%' : '-';
-    let cls = 'rate-na', barColor = '#BDC3C7';
+    let cls = 'rate-na', barColor = 'var(--muted2)', stateCls = '';
     if (rate !== null) {
-      if (rate >= 100) { cls = 'rate-over'; barColor = '#27AE60'; }
-      else if (rate >= 80) { cls = 'rate-near'; barColor = '#E67E22'; }
-      else { cls = 'rate-low'; barColor = '#E74C3C'; }
+      if (rate >= 100) { cls = 'rate-over'; barColor = 'var(--success)'; }
+      else if (rate >= 80) { cls = 'rate-near'; barColor = 'var(--warning)'; }
+      else { cls = 'rate-low'; barColor = 'var(--danger)'; stateCls = 'state-danger'; }
+    } else if (!row.mainMetric) {
+      stateCls = 'state-empty';
     }
     const barWidth = rate !== null ? Math.min(rate, 100) : 0;
-    const metricLabel = row.mainMetric ? row.mainMetric + (row.mainUnit ? '（' + row.mainUnit + '）' : '') : '-';
-    html += `<tr>
-      <td class="dept-name">${row.dept}</td>
-      <td style="font-size:12px;color:var(--muted)">${metricLabel}</td>
-      <td>${fmtNum(row.totalTarget)}</td>
-      <td>${fmtNum(row.totalActual)}</td>
-      <td><span class="rate-badge ${cls}">${rateStr}</span></td>
-      <td>
-        <div class="progress-wrap">
-          <div class="progress-bar" style="width:${barWidth}%;background:${barColor}"></div>
-        </div>
-      </td>
-    </tr>`;
+    const metricLabel = row.mainMetric ? row.mainMetric + (row.mainUnit ? '（' + row.mainUnit + '）' : '') : '指標なし';
+
+    html += '<div class="dept-card ' + stateCls + '">'
+      + '<div class="dept-card-head">'
+        + '<div>'
+          + '<div class="dept-card-name">' + esc(row.dept) + '</div>'
+          + '<div class="dept-card-metric">' + esc(metricLabel) + '</div>'
+        + '</div>'
+        + (rate !== null ? '<span class="rate-badge ' + cls + '">' + rateStr + '</span>' : '')
+      + '</div>';
+
+    if (row.mainMetric) {
+      html += '<div class="dept-card-numbers">'
+          + '<span class="dept-card-actual">' + fmtNum(row.totalActual) + '</span>'
+          + '<span class="dept-card-target">/ 目標 ' + fmtNum(row.totalTarget) + '</span>'
+        + '</div>'
+        + '<div class="progress-wrap"><div class="progress-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>';
+    } else {
+      html += '<div class="dept-card-empty-text">数値実績の登録なし</div>';
+    }
+    html += '</div>';
   });
-  html += '</tbody></table>';
-  document.getElementById('summary-body').innerHTML = html;
+  html += '</div>';
+  body.innerHTML = html;
 }
 
 // ============================================================
