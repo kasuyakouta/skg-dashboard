@@ -115,7 +115,7 @@
   .kpi-danger .kpi-label, .kpi-danger .kpi-value { color: var(--danger-text); }
 
   /* 部署サマリーカード */
-  .dept-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .dept-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
   .dept-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
     padding: 16px; transition: border-color 0.15s;
@@ -542,49 +542,64 @@ function renderSummary(DEPTS_ARG) {
       + '<div class="kpi-value">' + hrCount + '<span class="kpi-unit"> 件</span></div>'
     + '</div>';
 
-  const sorted = [...cachedSummary].sort(function(a, b) {
-    const ra = a.achieveRate === null ? -1 : a.achieveRate;
-    const rb = b.achieveRate === null ? -1 : b.achieveRate;
-    return rb - ra;
-  });
+  // 部署カードの表示順（達成率順ではなく固定の3グループ）
+  const DEPT_GROUPS = [
+    ["地域インフラ共創部1課", "地域インフラ共創部2課", "感動デザイン課"],
+    ["Re\"バース仙台港", "Re\"バース仙台扇町", "Re\"バース仙台岩切"],
+    ["総合クリエイト課", "トータルメンテナンス課"],
+  ];
+  // 実績データが無い場合はカードごと非表示にする部署
+  const HIDE_IF_EMPTY = ["総合クリエイト課", "トータルメンテナンス課"];
 
-  let html = '<div class="dept-card-grid">';
-  sorted.forEach(function(row) {
-    const rate = row.achieveRate;
-    const rateStr = rate !== null ? rate + '%' : '-';
-    let cls = 'rate-na', barColor = 'var(--muted2)', stateCls = '';
-    if (rate !== null) {
-      if (rate >= 100) { cls = 'rate-over'; barColor = 'var(--success)'; }
-      else if (rate >= 80) { cls = 'rate-near'; barColor = 'var(--warning)'; }
-      else { cls = 'rate-low'; barColor = 'var(--danger)'; stateCls = 'state-danger'; }
-    } else if (!row.mainMetric) {
-      stateCls = 'state-empty';
-    }
-    const barWidth = rate !== null ? Math.min(rate, 100) : 0;
-    const metricLabel = row.mainMetric ? row.mainMetric + (row.mainUnit ? '（' + row.mainUnit + '）' : '') : '指標なし';
+  let html = '';
+  DEPT_GROUPS.forEach(function(group) {
+    const rows = group
+      .map(function(dept) { return cachedSummary.find(function(r){ return r.dept === dept; }); })
+      .filter(function(row) {
+        if (!row) return false;
+        if (HIDE_IF_EMPTY.includes(row.dept) && !row.mainMetric) return false;
+        return true;
+      });
+    if (!rows.length) return;
 
-    html += '<div class="dept-card ' + stateCls + '">'
-      + '<div class="dept-card-head">'
-        + '<div>'
-          + '<div class="dept-card-name">' + esc(row.dept) + '</div>'
-          + '<div class="dept-card-metric">' + esc(metricLabel) + '</div>'
-        + '</div>'
-        + (rate !== null ? '<span class="rate-badge ' + cls + '">' + rateStr + '</span>' : '')
-      + '</div>';
+    html += '<div class="dept-card-grid">';
+    rows.forEach(function(row) {
+      const rate = row.achieveRate;
+      const rateStr = rate !== null ? rate + '%' : '-';
+      let cls = 'rate-na', barColor = 'var(--muted2)', stateCls = '';
+      if (rate !== null) {
+        if (rate >= 100) { cls = 'rate-over'; barColor = 'var(--success)'; }
+        else if (rate >= 80) { cls = 'rate-near'; barColor = 'var(--warning)'; }
+        else { cls = 'rate-low'; barColor = 'var(--danger)'; stateCls = 'state-danger'; }
+      } else if (!row.mainMetric) {
+        stateCls = 'state-empty';
+      }
+      const barWidth = rate !== null ? Math.min(rate, 100) : 0;
+      const metricLabel = row.mainMetric ? row.mainMetric + (row.mainUnit ? '（' + row.mainUnit + '）' : '') : '指標なし';
 
-    if (row.mainMetric) {
-      html += '<div class="dept-card-numbers">'
-          + '<span class="dept-card-actual">' + fmtNum(row.totalActual) + '</span>'
-          + '<span class="dept-card-target">/ 目標 ' + fmtNum(row.totalTarget) + '</span>'
-        + '</div>'
-        + '<div class="progress-wrap"><div class="progress-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>';
-    } else {
-      html += '<div class="dept-card-empty-text">数値実績の登録なし</div>';
-    }
+      html += '<div class="dept-card ' + stateCls + '">'
+        + '<div class="dept-card-head">'
+          + '<div>'
+            + '<div class="dept-card-name">' + esc(row.dept) + '</div>'
+            + '<div class="dept-card-metric">' + esc(metricLabel) + '</div>'
+          + '</div>'
+          + (rate !== null ? '<span class="rate-badge ' + cls + '">' + rateStr + '</span>' : '')
+        + '</div>';
+
+      if (row.mainMetric) {
+        html += '<div class="dept-card-numbers">'
+            + '<span class="dept-card-actual">' + fmtNum(row.totalActual) + '</span>'
+            + '<span class="dept-card-target">/ 目標 ' + fmtNum(row.totalTarget) + '</span>'
+          + '</div>'
+          + '<div class="progress-wrap"><div class="progress-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>';
+      } else {
+        html += '<div class="dept-card-empty-text">数値実績の登録なし</div>';
+      }
+      html += '</div>';
+    });
     html += '</div>';
   });
-  html += '</div>';
-  body.innerHTML = html;
+  body.innerHTML = html || '<div class="empty">データがありません</div>';
 }
 
 // ============================================================
