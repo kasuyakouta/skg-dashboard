@@ -140,6 +140,15 @@
   .rate-low  { background: var(--danger-bg); color: var(--danger-text); }
   .rate-na   { background: #EEF0F3; color: #8A909B; }
 
+  /* 案件ステータスバッジ（新規案件タブ用） */
+  .cat-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .cat-badge.cat-good   { background: var(--success-bg); color: var(--success-text); }
+  .cat-badge.cat-bad    { background: var(--danger-bg);  color: var(--danger-text); }
+  .cat-badge.cat-normal { background: #EEF0F3; color: #8A909B; }
+
   /* プログレスバー（細く・意味で色分け） */
   .progress-wrap { background: #EEF0F3; border-radius: 3px; height: 5px;
                    width: 100%; overflow: hidden; display: block; margin-top: 2px; }
@@ -246,6 +255,7 @@
     <div class="tab active" onclick="showTab('tab-summary', this)">📋 全部署サマリー</div>
     <div class="tab" onclick="showTab('tab-hr', this)">👥 人事コメント</div>
     <div class="tab" onclick="showTab('tab-perf', this)">📈 部署別実績</div>
+    <div class="tab" onclick="showTab('tab-shinki', this)">🏢 新規案件</div>
     <div class="tab" onclick="showTab('tab-report', this)">📝 AIレポート</div>
   </div>
 
@@ -292,6 +302,25 @@
     <div id="perf-body"><div class="empty">データがありません</div></div>
   </div>
 
+  <!-- 新規案件タブ（感動デザイン課） -->
+  <div id="tab-shinki" class="tab-content">
+    <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;gap:12px;">
+      <label>対象年月</label>
+      <select id="shinki-ym-select" onchange="renderShinkiAnken()">
+        <option value="">すべて</option>
+      </select>
+      <label style="margin-left:8px;">ランク</label>
+      <select id="shinki-rank-select" onchange="renderShinkiAnken()">
+        <option value="">すべて</option>
+        <option value="S">S</option>
+        <option value="A">A</option>
+        <option value="B">B</option>
+        <option value="C">C</option>
+      </select>
+    </div>
+    <div id="shinki-body"><div class="empty">データがありません</div></div>
+  </div>
+
   <!-- AIレポートタブ -->
   <div id="tab-report" class="tab-content">
     <div id="report-body"><div class="empty">この月のAIレポートはまだ生成されていません</div></div>
@@ -309,6 +338,7 @@ let cachedPerf = [];
 let cachedHr = [];
 let cachedSummary = [];
 let cachedReports = [];
+let cachedShinki = [];
 
 // ============================================================
 // JSONP fetch（CORSを回避）
@@ -485,6 +515,16 @@ async function loadAll(nocache) {
     cachedReports = [];
   }
   renderReports();
+
+  try {
+    const shinkiUrl = GAS_URL + '?type=shinki_anken';
+    const shinkiData = await fetchJSONP(shinkiUrl);
+    cachedShinki = (shinkiData && shinkiData.list) ? shinkiData.list : [];
+  } catch (err) {
+    cachedShinki = [];
+  }
+  populateShinkiYmSelect();
+  renderShinkiAnken();
 
   const deptSel = document.getElementById('dept-select');
   const prevDept = deptSel.value;
@@ -663,6 +703,70 @@ function renderReports() {
       + '<div class="report-meta">生成日時: ' + esc(genDate) + '</div>'
       + '</div>';
   });
+  body.innerHTML = html;
+}
+
+// ============================================================
+// 新規案件（感動デザイン課）：年月セレクトの作成
+// ============================================================
+function populateShinkiYmSelect() {
+  const sel = document.getElementById('shinki-ym-select');
+  const current = sel.value;
+  const yms = [...new Set(cachedShinki.map(function(r){ return r.ym; }))].sort().reverse();
+
+  sel.innerHTML = '<option value="">すべて</option>';
+  yms.forEach(function(ym) {
+    const opt = document.createElement('option');
+    opt.value = ym; opt.textContent = ym;
+    sel.appendChild(opt);
+  });
+  if (yms.includes(current)) sel.value = current;
+}
+
+// ============================================================
+// 新規案件（感動デザイン課）：一覧描画
+// ============================================================
+const SHINKI_RANK_CLASS = { S: 'rate-over', A: 'rate-near', B: 'rate-na', C: 'rate-low' };
+const SHINKI_RESULT_CLASS = {
+  '取得': 'cat-good', 'これから対応': 'cat-normal', '交渉中': 'cat-normal',
+  '取得出来ず': 'cat-bad', '対象外': 'cat-bad'
+};
+
+function renderShinkiAnken() {
+  const body = document.getElementById('shinki-body');
+  const ymFilter   = document.getElementById('shinki-ym-select').value;
+  const rankFilter = document.getElementById('shinki-rank-select').value;
+
+  const filtered = cachedShinki.filter(function(r) {
+    if (ymFilter && r.ym !== ymFilter) return false;
+    if (rankFilter && r.rank !== rankFilter) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    body.innerHTML = '<div class="empty">該当する案件がありません</div>';
+    return;
+  }
+
+  let html = '<div class="dept-card-grid">';
+  filtered.forEach(function(r) {
+    const rankCls = SHINKI_RANK_CLASS[r.rank] || 'rate-na';
+    const resultCls = SHINKI_RESULT_CLASS[r.result] || 'cat-normal';
+    html += '<div class="dept-card">'
+      + '<div class="dept-card-head">'
+        + '<div>'
+          + '<div class="dept-card-name">' + esc(r.propertyName || '(物件名未登録)') + '</div>'
+          + '<div class="dept-card-metric">' + esc(r.date) + '　' + esc(r.place || '') + '</div>'
+        + '</div>'
+        + '<span class="rate-badge ' + rankCls + '">' + esc(r.rank || '-') + '</span>'
+      + '</div>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">'
+        + '<span class="cat-badge ' + resultCls + '">' + esc(r.result || '未設定') + '</span>'
+        + (r.salesPerson ? '<span class="cat-badge cat-normal">営業: ' + esc(r.salesPerson) + '</span>' : '')
+      + '</div>'
+    + '</div>';
+  });
+  html += '</div>';
   body.innerHTML = html;
 }
 
