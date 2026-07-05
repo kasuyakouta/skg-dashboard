@@ -110,8 +110,8 @@
   .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
   .kpi-card.kpi-danger { background: var(--danger-bg); border-color: transparent; }
   .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-  .kpi-value { font-size: 24px; font-weight: 600; color: var(--text); }
-  .kpi-value .kpi-unit { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+  .kpi-value { font-size: 32px; font-weight: 600; color: var(--text); }
+  .kpi-value .kpi-unit { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 2px; }
   .kpi-danger .kpi-label, .kpi-danger .kpi-value { color: var(--danger-text); }
 
   /* 部署サマリーカード */
@@ -123,17 +123,17 @@
   .dept-card.state-danger { border-color: var(--danger); border-width: 1px; }
   .dept-card.state-empty { opacity: 0.55; }
   .dept-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 8px; }
-  .dept-card-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .dept-card-name { font-size: 16px; font-weight: 600; color: var(--text); }
   .dept-card-metric { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .dept-card-numbers { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
-  .dept-card-actual { font-size: 20px; font-weight: 600; color: var(--text); }
-  .dept-card-target { font-size: 12px; color: var(--muted); }
+  .dept-card-actual { font-size: 26px; font-weight: 600; color: var(--text); }
+  .dept-card-target { font-size: 13px; color: var(--muted); }
   .dept-card-empty-text { font-size: 13px; color: var(--muted); }
 
   /* 達成率バッジ */
   .rate-badge {
-    display: inline-block; padding: 3px 10px; border-radius: 12px;
-    font-size: 12px; font-weight: 600; white-space: nowrap;
+    display: inline-block; padding: 4px 12px; border-radius: 12px;
+    font-size: 14px; font-weight: 600; white-space: nowrap;
   }
   .rate-over { background: var(--success-bg); color: var(--success-text); }
   .rate-near { background: var(--warning-bg); color: var(--warning-text); }
@@ -230,6 +230,7 @@
   .report-card { margin-bottom: 16px; }
   .report-text { white-space: pre-line; font-size: 13px; line-height: 1.8; color: var(--text); }
   .report-meta { font-size: 11px; color: var(--muted2); margin-top: 10px; text-align: right; }
+  .report-card-empty { border-style: dashed; opacity: 0.7; }
 </style>
 </head>
 <body>
@@ -246,7 +247,13 @@
 
 <div class="controls">
   <label>対象年月</label>
+  <button onclick="shiftYmSelect(-1)" title="前月へ" style="
+    padding:6px 10px; border-radius:6px; border:1px solid var(--border);
+    background:#fff; cursor:pointer; font-size:13px; color:var(--muted);">◀ 前月</button>
   <select id="ym-select" onchange="loadAll()"><option value="">読み込み中...</option></select>
+  <button onclick="shiftYmSelect(1)" title="翌月へ" style="
+    padding:6px 10px; border-radius:6px; border:1px solid var(--border);
+    background:#fff; cursor:pointer; font-size:13px; color:var(--muted);">翌月 ▶</button>
   <button onclick="loadAll()" title="最新のフラットログを再読み込み" style="
     padding:6px 12px; border-radius:6px; border:1px solid var(--border);
     background:#fff; cursor:pointer; font-size:13px; color:var(--muted);
@@ -337,6 +344,33 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbybAvXkNCx9avzHmPW9HfTh
 const FALLBACK_MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
                          "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
 
+const ALL_DEPTS = [
+  "地域インフラ共創部1課","地域インフラ共創部2課",
+  "感動デザイン課","総合クリエイト課","トータルメンテナンス課",
+  "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
+];
+
+// 未来の空月ではなく「実績がある中で一番新しい月」をデフォルトにする
+function pickDefaultYm(months) {
+  if (!months.length) return null;
+  const now = new Date();
+  const todayYm = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+  const pastOrCurrent = months.filter(function(m) { return m <= todayYm; }).sort().reverse();
+  return pastOrCurrent.length ? pastOrCurrent[0] : [...months].sort()[0];
+}
+
+// 年月セレクトを1つ前/次の月へ移動する（前月・翌月ボタン用）
+function shiftYmSelect(delta) {
+  const sel = document.getElementById('ym-select');
+  const options = Array.from(sel.options).map(function(o) { return o.value; }).sort();
+  const idx = options.indexOf(sel.value);
+  if (idx === -1) return;
+  const newIdx = idx + delta;
+  if (newIdx < 0 || newIdx >= options.length) return;
+  sel.value = options[newIdx];
+  loadAll();
+}
+
 let cachedPerf = [];
 let cachedHr = [];
 let cachedSummary = [];
@@ -409,6 +443,8 @@ async function init() {
         sel.appendChild(opt);
       });
     }
+    const defaultYm1 = pickDefaultYm(months.length ? months : FALLBACK_MONTHS);
+    if (defaultYm1) sel.value = defaultYm1;
     // 最初の年月を自動ロード
     setStatus('', false);
     loadAll();
@@ -421,6 +457,8 @@ async function init() {
       opt.value = m; opt.textContent = m;
       sel.appendChild(opt);
     });
+    const defaultYm2 = pickDefaultYm(FALLBACK_MONTHS);
+    if (defaultYm2) sel.value = defaultYm2;
     loadAll();
   }
 }
@@ -436,27 +474,27 @@ async function loadAll(nocache) {
   cachedHr = [];
   cachedSummary = [];
 
-  const DEPTS = [
-    "地域インフラ共創部1課","地域インフラ共創部2課",
-    "感動デザイン課","総合クリエイト課","トータルメンテナンス課",
-    "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
-  ];
+  const DEPTS = ALL_DEPTS;
 
   setStatus(nocache ? '最新データを取得中...' : '読み込み中...', true);
 
-  try {
-    // フラットログから全部署を1回のAPIコールで取得（超高速）
-    const url = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym);
-    const data = await fetchJSONP(url);
+  // 依存関係のない3つの通信を同時に開始（読み込み高速化）
+  const flatUrl   = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym);
+  const reportUrl = GAS_URL + '?type=reports&ym=' + encodeURIComponent(ym);
+  const shinkiUrl = GAS_URL + '?type=shinki_anken';
+  const flatPromise   = fetchJSONP(flatUrl);
+  const reportPromise = fetchJSONP(reportUrl).catch(function() { return null; });
+  const shinkiPromise = fetchJSONP(shinkiUrl).catch(function() { return null; });
 
+  let data = null;
+  try {
+    data = await flatPromise;
     if (data && data.perf) data.perf.forEach(function(r){ cachedPerf.push(r); });
     if (data && data.hr)   data.hr.forEach(function(r){   cachedHr.push(r);   });
-
   } catch(err) {
     setStatus('', false);
     document.getElementById('summary-body').innerHTML =
       '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
-    return;
   }
 
   const DEPT_MAIN = {
@@ -506,26 +544,18 @@ async function loadAll(nocache) {
     };
   });
 
-  renderSummary(DEPTS);
-  renderHr();
-  renderPerfDetail();
-
-  try {
-    const reportUrl = GAS_URL + '?type=reports&ym=' + encodeURIComponent(ym);
-    const reportData = await fetchJSONP(reportUrl);
-    cachedReports = (reportData && reportData.reports) ? reportData.reports : [];
-  } catch (err) {
-    cachedReports = [];
+  if (data) {
+    renderSummary(DEPTS);
+    renderHr();
+    renderPerfDetail();
   }
+
+  const reportData = await reportPromise;
+  cachedReports = (reportData && reportData.reports) ? reportData.reports : [];
   renderReports();
 
-  try {
-    const shinkiUrl = GAS_URL + '?type=shinki_anken';
-    const shinkiData = await fetchJSONP(shinkiUrl);
-    cachedShinki = (shinkiData && shinkiData.list) ? shinkiData.list : [];
-  } catch (err) {
-    cachedShinki = [];
-  }
+  const shinkiData = await shinkiPromise;
+  cachedShinki = (shinkiData && shinkiData.list) ? shinkiData.list : [];
   populateShinkiYmSelect();
   renderShinkiAnken();
 
@@ -693,18 +723,22 @@ function renderHr() {
 // ============================================================
 function renderReports() {
   const body = document.getElementById('report-body');
-  if (!cachedReports.length) {
-    body.innerHTML = '<div class="empty">この月のAIレポートはまだ生成されていません</div>';
-    return;
-  }
   let html = '';
-  cachedReports.forEach(function(r) {
-    const genDate = r.generatedAt ? new Date(r.generatedAt).toLocaleString('ja-JP') : '';
-    html += '<div class="card report-card">'
-      + '<h2>' + esc(r.dept) + '</h2>'
-      + '<div class="report-text">' + esc(r.reportText) + '</div>'
-      + '<div class="report-meta">生成日時: ' + esc(genDate) + '</div>'
-      + '</div>';
+  ALL_DEPTS.forEach(function(dept) {
+    const r = cachedReports.find(function(x) { return x.dept === dept; });
+    if (r) {
+      const genDate = r.generatedAt ? new Date(r.generatedAt).toLocaleString('ja-JP') : '';
+      html += '<div class="card report-card">'
+        + '<h2>' + esc(dept) + '</h2>'
+        + '<div class="report-text">' + esc(r.reportText) + '</div>'
+        + '<div class="report-meta">生成日時: ' + esc(genDate) + '</div>'
+        + '</div>';
+    } else {
+      html += '<div class="card report-card report-card-empty">'
+        + '<h2>' + esc(dept) + '</h2>'
+        + '<div class="empty" style="padding:16px 0;">この月のAIレポートは未入力です</div>'
+        + '</div>';
+    }
   });
   body.innerHTML = html;
 }
