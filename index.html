@@ -164,7 +164,9 @@
     display: grid;
     grid-template-columns: 110px 130px 1fr 90px;
     gap: 0; align-items: stretch;
-    border-radius: 8px; border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
     background: #F8FAFC; overflow: hidden;
   }
   .hr-item.cat-good   { border-left-color: var(--success); }
@@ -183,7 +185,8 @@
   .hr-field-value.hr-status-未対応 { color: var(--danger-text); font-weight: 600; }
   .hr-list-head {
     display: grid; grid-template-columns: 110px 130px 1fr 90px;
-    padding: 0 0 4px; margin-bottom: 2px;
+    padding: 0 0 6px; margin-bottom: 6px;
+    border-bottom: 1px solid var(--border);
   }
   .hr-list-head span { font-size: 11px; color: var(--muted); padding: 0 12px; font-weight: 600; }
   @media (max-width: 640px) {
