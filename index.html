@@ -327,6 +327,10 @@
         <option value="B">B</option>
         <option value="C">C</option>
       </select>
+      <label style="margin-left:8px;">結果</label>
+      <select id="shinki-result-select" onchange="renderShinkiAnken()">
+        <option value="">すべて</option>
+      </select>
     </div>
     <div id="shinki-body"><div class="empty">データがありません</div></div>
   </div>
@@ -557,6 +561,7 @@ async function loadAll(nocache) {
   const shinkiData = await shinkiPromise;
   cachedShinki = (shinkiData && shinkiData.list) ? shinkiData.list : [];
   populateShinkiYmSelect();
+  populateShinkiResultSelect();
   renderShinkiAnken();
 
   const deptSel = document.getElementById('dept-select');
@@ -761,6 +766,23 @@ function populateShinkiYmSelect() {
 }
 
 // ============================================================
+// 新規案件（感動デザイン課）：結果セレクトの作成（実データから動的生成）
+// ============================================================
+function populateShinkiResultSelect() {
+  const sel = document.getElementById('shinki-result-select');
+  const current = sel.value;
+  const results = [...new Set(cachedShinki.map(function(r){ return r.result; }).filter(Boolean))].sort();
+
+  sel.innerHTML = '<option value="">すべて</option>';
+  results.forEach(function(result) {
+    const opt = document.createElement('option');
+    opt.value = result; opt.textContent = result;
+    sel.appendChild(opt);
+  });
+  if (results.includes(current)) sel.value = current;
+}
+
+// ============================================================
 // 新規案件（感動デザイン課）：一覧描画
 // ============================================================
 const SHINKI_RANK_CLASS = { S: 'rate-over', A: 'rate-near', B: 'rate-na', C: 'rate-low' };
@@ -771,12 +793,14 @@ const SHINKI_RESULT_CLASS = {
 
 function renderShinkiAnken() {
   const body = document.getElementById('shinki-body');
-  const ymFilter   = document.getElementById('shinki-ym-select').value;
-  const rankFilter = document.getElementById('shinki-rank-select').value;
+  const ymFilter     = document.getElementById('shinki-ym-select').value;
+  const rankFilter   = document.getElementById('shinki-rank-select').value;
+  const resultFilter = document.getElementById('shinki-result-select').value;
 
   const filtered = cachedShinki.filter(function(r) {
     if (ymFilter && r.ym !== ymFilter) return false;
     if (rankFilter && r.rank !== rankFilter) return false;
+    if (resultFilter && r.result !== resultFilter) return false;
     return true;
   });
 
