@@ -120,7 +120,7 @@
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
     padding: 16px; transition: border-color 0.15s;
   }
-  .dept-card.state-danger { border-color: var(--danger); border-width: 1px; }
+  .dept-card.state-danger { border-color: var(--danger); border-width: 1px; background: var(--danger-bg); }
   .dept-card.state-empty { opacity: 0.55; }
   .dept-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 8px; }
   .dept-card-name { font-size: 16px; font-weight: 600; color: var(--text); }
@@ -134,7 +134,7 @@
   /* 前月比バッジ */
   .delta-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
   .delta-up   { background: var(--success-bg); color: var(--success-text); }
-  .delta-down { background: var(--danger-bg);  color: var(--danger-text); }
+  .delta-down { background: var(--danger); color: #fff; }
   .delta-flat { background: #EEF0F3; color: #8A909B; }
 
   /* 次回までのアクション */
@@ -145,14 +145,8 @@
     display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px;
     border-radius: 8px; margin-right: 6px;
   }
-  .action-status-todo       { background: var(--danger-bg);  color: var(--danger-text); }
+  .action-status-todo       { background: var(--danger); color: #fff; }
   .action-status-inprogress { background: var(--warning-bg); color: var(--warning-text); }
-
-  /* 要注意部署スポットライト */
-  .danger-spotlight-title {
-    font-size: 14px; font-weight: 600; color: var(--danger-text); margin-bottom: 8px;
-  }
-  .danger-spotlight-divider { border-top: 1px solid var(--border); margin: 20px 0 16px; }
 
   /* 達成率バッジ */
   .rate-badge {
@@ -767,17 +761,6 @@ function renderSummary(DEPTS_ARG) {
   }
 
   let html = '';
-
-  // 要注意部署だけを冒頭にまとめて表示（該当部署が無ければ非表示）
-  const dangerRows = cachedSummary.filter(function(r){ return r.achieveRate !== null && r.achieveRate < 80; });
-  if (dangerRows.length) {
-    html += '<div class="danger-spotlight">'
-      + '<div class="danger-spotlight-title">⚠ 要注意部署（達成率80%未満）</div>'
-      + '<div class="dept-card-grid">';
-    dangerRows.forEach(function(row) { html += buildDeptCard(row); });
-    html += '</div></div>'
-      + '<div class="danger-spotlight-divider"></div>';
-  }
 
   // 部署カードの表示順（達成率順ではなく固定の3グループ）
   const DEPT_GROUPS = [
