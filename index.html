@@ -129,6 +129,30 @@
   .dept-card-actual { font-size: 26px; font-weight: 600; color: var(--text); }
   .dept-card-target { font-size: 13px; color: var(--muted); }
   .dept-card-empty-text { font-size: 13px; color: var(--muted); }
+  .dept-card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+  /* 前月比バッジ */
+  .delta-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .delta-up   { background: var(--success-bg); color: var(--success-text); }
+  .delta-down { background: var(--danger-bg);  color: var(--danger-text); }
+  .delta-flat { background: #EEF0F3; color: #8A909B; }
+
+  /* 次回までのアクション */
+  .action-list { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .action-list-title { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .action-item { font-size: 12px; color: var(--text); line-height: 1.6; }
+  .action-status-todo, .action-status-inprogress {
+    display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px;
+    border-radius: 8px; margin-right: 6px;
+  }
+  .action-status-todo       { background: var(--danger-bg);  color: var(--danger-text); }
+  .action-status-inprogress { background: var(--warning-bg); color: var(--warning-text); }
+
+  /* 要注意部署スポットライト */
+  .danger-spotlight-title {
+    font-size: 14px; font-weight: 600; color: var(--danger-text); margin-bottom: 8px;
+  }
+  .danger-spotlight-divider { border-top: 1px solid var(--border); margin: 20px 0 16px; }
 
   /* 達成率バッジ */
   .rate-badge {
@@ -263,10 +287,10 @@
 <main>
   <div class="tabs">
     <div class="tab active" onclick="showTab('tab-summary', this)">📋 全部署サマリー</div>
+    <div class="tab" onclick="showTab('tab-report', this)">📝 AIレポート</div>
     <div class="tab" onclick="showTab('tab-hr', this)">👥 人事コメント</div>
     <div class="tab" onclick="showTab('tab-perf', this)">📈 部署別実績</div>
     <div class="tab" onclick="showTab('tab-shinki', this)">🏢 新規案件</div>
-    <div class="tab" onclick="showTab('tab-report', this)">📝 AIレポート</div>
   </div>
 
   <!-- サマリータブ -->
@@ -375,11 +399,81 @@ function shiftYmSelect(delta) {
   loadAll();
 }
 
+// 年月文字列をnヶ月シフトする（前月比の算出に使用）
+function shiftYmString(ym, deltaMonths) {
+  const parts = ym.split("-");
+  const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1 + deltaMonths, 1);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+}
+
+// 部署ごとの主要指標定義（サマリーカードで表示する指標）
+const DEPT_MAIN = {
+  "地域インフラ共創部1課":  { metric:"粗利益", unit:"千円" },
+  "地域インフラ共創部2課":  { metric:"数量",   unit:"t"    },
+  "感動デザイン課":         { metric:"数量",   unit:"t"    },
+  "総合クリエイト課":       { metric:null,     unit:null   },
+  "トータルメンテナンス課": { metric:null,     unit:null   },
+  "Re\"バース仙台港":       { metric:"数量",   unit:"t"    },
+  "Re\"バース仙台岩切":     { metric:"数量",   unit:"t"    },
+  "Re\"バース仙台扇町":     { metric:"数量",   unit:"t"    },
+};
+
+// 部署によっては「合計」品目と「内訳品目」が両方記録されており、
+// 単純合算すると二重カウントになるため、集計対象の品目を制限する
+// （未定義の部署は従来通り全品目を合算）
+const DEPT_SUMMARY_ITEMS = {
+  "地域インフラ共創部2課": ["RPS_合計"],
+  "Re\"バース仙台扇町": ["古紙合計"],
+};
+
+// 人事コメントのカテゴリ分類（サマリーカードのバッジ判定にも使用）
+const HR_CAT_CLASS = {
+  '頑張り・好事例': 'cat-good',
+  '安全衛生（事故・労災）': 'cat-safety',
+  '問題行動・クレーム対応': 'cat-bad',
+  '安全衛生': 'cat-safety',
+  '問題行動・クレーム': 'cat-bad',
+  '入退社・異動': 'cat-enter',
+};
+const HR_NEGATIVE_CLASSES = ['cat-bad', 'cat-safety'];
+
+// 部署別の目標・実績サマリーを計算する（当月・前月の両方で同じロジックを使うため関数化）
+function computeDeptSummary(perfRecords, ym, depts) {
+  return depts.map(function(dept) {
+    const allRecs = perfRecords.filter(function(r){ return r.dept === dept; });
+    const summaryItems = DEPT_SUMMARY_ITEMS[dept];
+    const recs = summaryItems
+      ? allRecs.filter(function(r){ return summaryItems.includes(r.item); })
+      : allRecs;
+    const mainDef = DEPT_MAIN[dept] || { metric:"数量", unit:null };
+    let totalTarget=0, totalActual=0, itemCount=0;
+    recs.forEach(function(r){
+      const metricMatch = !mainDef.metric || r.metric === mainDef.metric;
+      const unitMatch   = !mainDef.unit   || r.unit   === mainDef.unit;
+      if (metricMatch && unitMatch) {
+        if(typeof r.target==="number" && r.target > 0) totalTarget+=r.target;
+        if(typeof r.actual==="number" && r.actual > 0) totalActual+=r.actual;
+        itemCount++;
+      }
+    });
+    return {
+      dept:dept, ym:ym,
+      mainMetric: mainDef.metric,
+      mainUnit:   mainDef.unit,
+      totalTarget:totalTarget, totalActual:totalActual,
+      achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*1000)/10:null,
+      itemCount:itemCount,
+      prevAchieveRate: null
+    };
+  });
+}
+
 let cachedPerf = [];
 let cachedHr = [];
 let cachedSummary = [];
 let cachedReports = [];
 let cachedShinki = [];
+let cachedActions = [];
 
 // ============================================================
 // JSONP fetch（CORSを回避）
@@ -479,16 +573,21 @@ async function loadAll(nocache) {
   cachedSummary = [];
 
   const DEPTS = ALL_DEPTS;
+  const prevYm = shiftYmString(ym, -1);
 
   setStatus(nocache ? '最新データを取得中...' : '読み込み中...', true);
 
-  // 依存関係のない3つの通信を同時に開始（読み込み高速化）
-  const flatUrl   = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym);
-  const reportUrl = GAS_URL + '?type=reports&ym=' + encodeURIComponent(ym);
-  const shinkiUrl = GAS_URL + '?type=shinki_anken';
-  const flatPromise   = fetchJSONP(flatUrl);
-  const reportPromise = fetchJSONP(reportUrl).catch(function() { return null; });
-  const shinkiPromise = fetchJSONP(shinkiUrl).catch(function() { return null; });
+  // 依存関係のない通信をまとめて同時に開始（読み込み高速化）
+  const flatUrl     = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym);
+  const prevFlatUrl = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(prevYm);
+  const reportUrl   = GAS_URL + '?type=reports&ym=' + encodeURIComponent(ym);
+  const shinkiUrl   = GAS_URL + '?type=shinki_anken';
+  const actionsUrl  = GAS_URL + '?type=actions';
+  const flatPromise     = fetchJSONP(flatUrl);
+  const prevFlatPromise = fetchJSONP(prevFlatUrl).catch(function() { return null; });
+  const reportPromise   = fetchJSONP(reportUrl).catch(function() { return null; });
+  const shinkiPromise   = fetchJSONP(shinkiUrl).catch(function() { return null; });
+  const actionsPromise  = fetchJSONP(actionsUrl).catch(function() { return null; });
 
   let data = null;
   try {
@@ -501,52 +600,20 @@ async function loadAll(nocache) {
       '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
   }
 
-  const DEPT_MAIN = {
-    "地域インフラ共創部1課":  { metric:"粗利益", unit:"千円" },
-    "地域インフラ共創部2課":  { metric:"数量",   unit:"t"    },
-    "感動デザイン課":         { metric:"数量",   unit:"t"    },
-    "総合クリエイト課":       { metric:null,     unit:null   },
-    "トータルメンテナンス課": { metric:null,     unit:null   },
-    "Re\"バース仙台港":       { metric:"数量",   unit:"t"    },
-    "Re\"バース仙台岩切":     { metric:"数量",   unit:"t"    },
-    "Re\"バース仙台扇町":     { metric:"数量",   unit:"t"    },
-  };
+  // サマリー計算（当月）
+  cachedSummary = computeDeptSummary(cachedPerf, ym, DEPTS);
 
-  // 部署によっては「合計」品目と「内訳品目」が両方記録されており、
-  // 単純合算すると二重カウントになるため、集計対象の品目を制限する
-  // （未定義の部署は従来通り全品目を合算）
-  const DEPT_SUMMARY_ITEMS = {
-    "地域インフラ共創部2課": ["RPS_合計"],
-    "Re\"バース仙台扇町": ["古紙合計"],
-  };
-
-  // サマリー計算（全部署分）
-  cachedSummary = DEPTS.map(function(dept) {
-    const allRecs = cachedPerf.filter(function(r){ return r.dept === dept; });
-    const summaryItems = DEPT_SUMMARY_ITEMS[dept];
-    const recs = summaryItems
-      ? allRecs.filter(function(r){ return summaryItems.includes(r.item); })
-      : allRecs;
-    const mainDef = DEPT_MAIN[dept] || { metric:"数量", unit:null };
-    let totalTarget=0, totalActual=0, itemCount=0;
-    recs.forEach(function(r){
-      const metricMatch = !mainDef.metric || r.metric === mainDef.metric;
-      const unitMatch   = !mainDef.unit   || r.unit   === mainDef.unit;
-      if (metricMatch && unitMatch) {
-        if(typeof r.target==="number" && r.target > 0) totalTarget+=r.target;
-        if(typeof r.actual==="number" && r.actual > 0) totalActual+=r.actual;
-        itemCount++;
-      }
-    });
-    return {
-      dept:dept, ym:ym,
-      mainMetric: mainDef.metric,
-      mainUnit:   mainDef.unit,
-      totalTarget:totalTarget, totalActual:totalActual,
-      achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*1000)/10:null,
-      itemCount:itemCount
-    };
+  // 前月比較（前月比バッジ用。取得できなくても本体表示は継続する）
+  const prevFlatData = await prevFlatPromise;
+  const prevPerf = (prevFlatData && prevFlatData.perf) ? prevFlatData.perf : [];
+  const prevSummary = computeDeptSummary(prevPerf, prevYm, DEPTS);
+  cachedSummary.forEach(function(row) {
+    const prevRow = prevSummary.find(function(p){ return p.dept === row.dept; });
+    row.prevAchieveRate = (prevRow && prevRow.achieveRate !== null) ? prevRow.achieveRate : null;
   });
+
+  const actionsData = await actionsPromise;
+  cachedActions = (actionsData && actionsData.list) ? actionsData.list : [];
 
   if (data) {
     renderSummary(DEPTS);
@@ -620,6 +687,98 @@ function renderSummary(DEPTS_ARG) {
       + '<div class="kpi-value">' + hrCount + '<span class="kpi-unit"> 件</span></div>'
     + '</div>';
 
+  // 前月比バッジ
+  function buildDeltaBadge(row) {
+    if (row.achieveRate === null || row.prevAchieveRate === null) return '';
+    const delta = Math.round((row.achieveRate - row.prevAchieveRate) * 10) / 10;
+    if (delta === 0) return '<span class="delta-badge delta-flat">→ 前月と同水準</span>';
+    const sign = delta > 0 ? '+' : '';
+    const cls  = delta > 0 ? 'delta-up' : 'delta-down';
+    const icon = delta > 0 ? '▲' : '▼';
+    return '<span class="delta-badge ' + cls + '">' + icon + ' 前月比' + sign + delta + 'pt</span>';
+  }
+
+  // 人事コメントありバッジ（クレーム等があれば警告色、無ければ通常色）
+  function buildHrBadge(dept) {
+    const items = cachedHr.filter(function(h){ return h.dept === dept && h.content; });
+    if (!items.length) return '';
+    const hasNegative = items.some(function(h){ return HR_NEGATIVE_CLASSES.includes(HR_CAT_CLASS[h.category] || ''); });
+    const cls = hasNegative ? 'cat-bad' : 'cat-good';
+    const label = hasNegative ? '⚠ 人事コメントあり' : '💬 人事コメントあり';
+    return '<span class="cat-badge ' + cls + '">' + label + '</span>';
+  }
+
+  // 次回までのアクション（未完了分のみ表示）
+  function buildActionsHtml(dept) {
+    const items = cachedActions.filter(function(a){ return a.dept === dept && a.status !== '完了'; });
+    if (!items.length) return '';
+    let h = '<div class="action-list"><div class="action-list-title">📌 次回までのアクション</div>';
+    items.forEach(function(a) {
+      const statusCls = a.status === '対応中' ? 'action-status-inprogress' : 'action-status-todo';
+      h += '<div class="action-item"><span class="' + statusCls + '">' + esc(a.status || '未着手') + '</span>' + esc(a.text) + '</div>';
+    });
+    h += '</div>';
+    return h;
+  }
+
+  // 1部署分のカードHTMLを生成（要注意セクション・通常グループの両方で共通利用）
+  function buildDeptCard(row) {
+    const rate = row.achieveRate;
+    const rateStr = rate !== null ? rate + '%' : '-';
+    let cls = 'rate-na', barColor = 'var(--muted2)', stateCls = '';
+    if (rate !== null) {
+      if (rate >= 100) { cls = 'rate-over'; barColor = 'var(--success)'; }
+      else if (rate >= 80) { cls = 'rate-near'; barColor = 'var(--warning)'; }
+      else { cls = 'rate-low'; barColor = 'var(--danger)'; stateCls = 'state-danger'; }
+    } else if (!row.mainMetric) {
+      stateCls = 'state-empty';
+    }
+    const barWidth = rate !== null ? Math.min(rate, 100) : 0;
+    const metricLabel = row.mainMetric ? row.mainMetric + (row.mainUnit ? '（' + row.mainUnit + '）' : '') : '指標なし';
+    const deltaHtml = buildDeltaBadge(row);
+    const hrBadgeHtml = buildHrBadge(row.dept);
+    const actionsHtml = buildActionsHtml(row.dept);
+
+    let cardHtml = '<div class="dept-card ' + stateCls + '">'
+      + '<div class="dept-card-head">'
+        + '<div>'
+          + '<div class="dept-card-name">' + esc(row.dept) + '</div>'
+          + '<div class="dept-card-metric">' + esc(metricLabel) + '</div>'
+        + '</div>'
+        + (rate !== null ? '<span class="rate-badge ' + cls + '">' + rateStr + '</span>' : '')
+      + '</div>';
+
+    if (row.mainMetric) {
+      cardHtml += '<div class="dept-card-numbers">'
+          + '<span class="dept-card-actual">' + fmtNum(row.totalActual) + '</span>'
+          + '<span class="dept-card-target">/ 目標 ' + fmtNum(row.totalTarget) + '</span>'
+        + '</div>'
+        + '<div class="progress-wrap"><div class="progress-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>';
+    } else {
+      cardHtml += '<div class="dept-card-empty-text">数値実績の登録なし</div>';
+    }
+
+    if (deltaHtml || hrBadgeHtml) {
+      cardHtml += '<div class="dept-card-badges">' + deltaHtml + hrBadgeHtml + '</div>';
+    }
+    cardHtml += actionsHtml;
+    cardHtml += '</div>';
+    return cardHtml;
+  }
+
+  let html = '';
+
+  // 要注意部署だけを冒頭にまとめて表示（該当部署が無ければ非表示）
+  const dangerRows = cachedSummary.filter(function(r){ return r.achieveRate !== null && r.achieveRate < 80; });
+  if (dangerRows.length) {
+    html += '<div class="danger-spotlight">'
+      + '<div class="danger-spotlight-title">⚠ 要注意部署（達成率80%未満）</div>'
+      + '<div class="dept-card-grid">';
+    dangerRows.forEach(function(row) { html += buildDeptCard(row); });
+    html += '</div></div>'
+      + '<div class="danger-spotlight-divider"></div>';
+  }
+
   // 部署カードの表示順（達成率順ではなく固定の3グループ）
   const DEPT_GROUPS = [
     ["地域インフラ共創部1課", "地域インフラ共創部2課", "感動デザイン課"],
@@ -629,7 +788,6 @@ function renderSummary(DEPTS_ARG) {
   // 実績データが無い場合はカードごと非表示にする部署
   const HIDE_IF_EMPTY = ["総合クリエイト課", "トータルメンテナンス課"];
 
-  let html = '';
   DEPT_GROUPS.forEach(function(group) {
     const rows = group
       .map(function(dept) { return cachedSummary.find(function(r){ return r.dept === dept; }); })
@@ -641,40 +799,7 @@ function renderSummary(DEPTS_ARG) {
     if (!rows.length) return;
 
     html += '<div class="dept-card-grid">';
-    rows.forEach(function(row) {
-      const rate = row.achieveRate;
-      const rateStr = rate !== null ? rate + '%' : '-';
-      let cls = 'rate-na', barColor = 'var(--muted2)', stateCls = '';
-      if (rate !== null) {
-        if (rate >= 100) { cls = 'rate-over'; barColor = 'var(--success)'; }
-        else if (rate >= 80) { cls = 'rate-near'; barColor = 'var(--warning)'; }
-        else { cls = 'rate-low'; barColor = 'var(--danger)'; stateCls = 'state-danger'; }
-      } else if (!row.mainMetric) {
-        stateCls = 'state-empty';
-      }
-      const barWidth = rate !== null ? Math.min(rate, 100) : 0;
-      const metricLabel = row.mainMetric ? row.mainMetric + (row.mainUnit ? '（' + row.mainUnit + '）' : '') : '指標なし';
-
-      html += '<div class="dept-card ' + stateCls + '">'
-        + '<div class="dept-card-head">'
-          + '<div>'
-            + '<div class="dept-card-name">' + esc(row.dept) + '</div>'
-            + '<div class="dept-card-metric">' + esc(metricLabel) + '</div>'
-          + '</div>'
-          + (rate !== null ? '<span class="rate-badge ' + cls + '">' + rateStr + '</span>' : '')
-        + '</div>';
-
-      if (row.mainMetric) {
-        html += '<div class="dept-card-numbers">'
-            + '<span class="dept-card-actual">' + fmtNum(row.totalActual) + '</span>'
-            + '<span class="dept-card-target">/ 目標 ' + fmtNum(row.totalTarget) + '</span>'
-          + '</div>'
-          + '<div class="progress-wrap"><div class="progress-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>';
-      } else {
-        html += '<div class="dept-card-empty-text">数値実績の登録なし</div>';
-      }
-      html += '</div>';
-    });
+    rows.forEach(function(row) { html += buildDeptCard(row); });
     html += '</div>';
   });
   body.innerHTML = html || '<div class="empty">データがありません</div>';
@@ -689,14 +814,7 @@ function renderHr() {
     body.innerHTML = '<div class="empty">この月の人事コメントはありません</div>';
     return;
   }
-  const catClass = {
-    '頑張り・好事例': 'cat-good',
-    '安全衛生（事故・労災）': 'cat-safety',
-    '問題行動・クレーム対応': 'cat-bad',
-    '安全衛生': 'cat-safety',
-    '問題行動・クレーム': 'cat-bad',
-    '入退社・異動': 'cat-enter',
-  };
+  const catClass = HR_CAT_CLASS;
   const depts = [...new Set(cachedHr.map(r => r.dept))];
   let html = '';
   depts.forEach(dept => {
