@@ -455,7 +455,7 @@ function computeDeptSummary(perfRecords, ym, depts) {
       mainMetric: mainDef.metric,
       mainUnit:   mainDef.unit,
       totalTarget:totalTarget, totalActual:totalActual,
-      achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*1000)/10:null,
+      achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*100):null,
       itemCount:itemCount,
       prevAchieveRate: null
     };
@@ -659,7 +659,7 @@ function renderSummary(DEPTS_ARG) {
   const achievedCount = withRate.filter(function(r){ return r.achieveRate >= 100; }).length;
   const dangerCount   = withRate.filter(function(r){ return r.achieveRate < 80; }).length;
   const avgRate = withRate.length
-    ? Math.round(withRate.reduce(function(s,r){ return s + r.achieveRate; }, 0) / withRate.length * 10) / 10
+    ? Math.round(withRate.reduce(function(s,r){ return s + r.achieveRate; }, 0) / withRate.length)
     : null;
   const hrCount = (typeof cachedHr !== 'undefined') ? cachedHr.filter(function(r){ return r.content; }).length : 0;
 
@@ -684,7 +684,7 @@ function renderSummary(DEPTS_ARG) {
   // 前月比バッジ
   function buildDeltaBadge(row) {
     if (row.achieveRate === null || row.prevAchieveRate === null) return '';
-    const delta = Math.round((row.achieveRate - row.prevAchieveRate) * 10) / 10;
+    const delta = Math.round(row.achieveRate - row.prevAchieveRate);
     if (delta === 0) return '<span class="delta-badge delta-flat">→ 前月と同水準</span>';
     const sign = delta > 0 ? '+' : '';
     const cls  = delta > 0 ? 'delta-up' : 'delta-down';
@@ -1322,7 +1322,7 @@ function setStatus(msg, loading) {
 
 function fmtNum(n) {
   if (n === null || n === undefined || n === '') return '-';
-  return Number(n).toLocaleString('ja-JP');
+  return Math.round(Number(n)).toLocaleString('ja-JP');
 }
 
 function esc(str) {
