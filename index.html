@@ -935,6 +935,7 @@ function renderShinkiAnken() {
 // グラフ用のグローバル変数
 let trendChart = null;
 let cachedTrend = {};  // { dept: records[] }
+let cachedTotalMenteYears = null; // トータルメンテナンス課の全年度比較データ
 
 // 各部署のグラフデフォルト設定
 // key: 品目名||指標名（完全一致）/ filterFn: 複数品目を合算
@@ -992,6 +993,17 @@ async function onDeptChange() {
     }
   }
 
+  // トータルメンテナンス課：全年度比較用データも取得（初回のみ）
+  if (dept === "トータルメンテナンス課" && !cachedTotalMenteYears) {
+    try {
+      const url2 = GAS_URL + '?type=totalmente_years';
+      const data2 = await fetchJSONP(url2);
+      cachedTotalMenteYears = data2.categories || [];
+    } catch(err) {
+      cachedTotalMenteYears = [];
+    }
+  }
+
   // デフォルト設定を先頭に追加してから品目プルダウンを構築
   const def = DEPT_DEFAULT_CHART[dept];
   const itemKeys = [...new Set(cachedTrend[dept].map(function(r){
@@ -1007,6 +1019,14 @@ async function onDeptChange() {
     const parts = k.split('||');
     return '<option value="' + esc(k) + '">' + parts[0] + '（' + parts[1] + '）</option>';
   }).join('');
+
+  // トータルメンテナンス課：全年度比較の選択肢を追加
+  if (dept === "トータルメンテナンス課" && cachedTotalMenteYears && cachedTotalMenteYears.length) {
+    optionsHtml += cachedTotalMenteYears.map(function(c) {
+      return '<option value="ALLYEARS::' + esc(c.category) + '">' + esc(c.category) + '（全年度比較）</option>';
+    }).join('');
+  }
+
   itemSel.innerHTML = optionsHtml;
 
   // デフォルト品目を自動選択
@@ -1092,7 +1112,16 @@ function syncItemTabsActive() {
 function renderChart() {
   const dept    = document.getElementById('dept-select').value;
   const itemKey = document.getElementById('item-select').value;
-  if (!dept || !itemKey || !cachedTrend[dept]) return;
+  if (!dept || !itemKey) return;
+
+  // トータルメンテナンス課：全年度比較モード
+  if (itemKey.indexOf('ALLYEARS::') === 0) {
+    const category = itemKey.substring('ALLYEARS::'.length);
+    renderAllYearsChart(dept, category);
+    return;
+  }
+
+  if (!cachedTrend[dept]) return;
 
   const FY = 2026;
   const MONTHS = ["04","05","06","07","08","09","10","11","12","01","02","03"];
@@ -1202,6 +1231,66 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
         },
         y: {
           beginAtZero: false,
+          ticks: { callback: function(v){ return fmtNum(v); } }
+        }
+      }
+    }
+  });
+}
+
+// ============================================================
+// トータルメンテナンス課：事故件数の全年度比較チャート
+// 年度ごとに1本の折れ線として、全年度を同時に表示する
+// （凡例クリックで特定の年度だけ表示/非表示を切り替え可能＝過去年度への「切替」も兼ねる）
+// ============================================================
+const ALLYEARS_COLORS = [
+  '#E67E22', '#2E86C1', '#16A085', '#C0392B',
+  '#8E44AD', '#7F8C8D', '#D4AC0D', '#2C3E50'
+];
+
+function renderAllYearsChart(dept, category) {
+  document.getElementById('chart-title').textContent = dept + ' ｜ ' + category + '（全年度比較） 月次推移';
+  document.getElementById('chart-status').textContent = '';
+
+  const MONTHS = ["4月","5月","6月","7月","8月","9月","10月","11月","12月","1月","2月","3月"];
+  const found = (cachedTotalMenteYears || []).find(function(c){ return c.category === category; });
+  const years = found ? found.years : [];
+
+  const datasets = years.map(function(y, i) {
+    const color = ALLYEARS_COLORS[i % ALLYEARS_COLORS.length];
+    return {
+      label: y.year,
+      data: y.monthly,
+      borderColor: color,
+      backgroundColor: 'transparent',
+      borderWidth: y.year.indexOf('令和8') === 0 ? 3 : 1.5,
+      pointRadius: 3,
+      tension: 0.3,
+      spanGaps: true
+    };
+  });
+
+  const ctx = document.getElementById('trend-chart').getContext('2d');
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: MONTHS, datasets: datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { bottom: 4, right: 8 } },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: function(ctx){ return ctx.dataset.label + ': ' + fmtNum(ctx.raw) + '件'; }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { maxRotation: 0, autoSkipPadding: 8 } },
+        y: {
+          beginAtZero: true,
           ticks: { callback: function(v){ return fmtNum(v); } }
         }
       }
