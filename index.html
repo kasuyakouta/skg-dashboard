@@ -362,6 +362,14 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbybAvXkNCx9avzHmPW9HfThs7Z6o5tHHoC_QkfFcYLXbodTRUhuwbK8tpjno1SYo56_9g/exec";
 
+// 簡易アクセスキー（GAS側のスクリプトプロパティ DASHBOARD_ACCESS_KEY と同じ値にすること）
+// ※index.htmlはソースが公開されているため、これは「URLを偶然踏んだだけの第三者」を防ぐ
+//   軽い抑止に過ぎず、本格的なアクセス制御ではない点に注意
+const ACCESS_KEY = "b91c5c68e0a8d1eb7004bfad";
+function withKey(url) {
+  return url + (url.indexOf('?') > -1 ? '&' : '?') + 'key=' + encodeURIComponent(ACCESS_KEY);
+}
+
 // GAS側 getAvailableMonths_() と同じ内容（通信失敗時のフォールバック用）
 const FALLBACK_MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
                          "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
@@ -513,10 +521,10 @@ async function init() {
   try {
     let res;
     try {
-      res = await fetchJSONP(GAS_URL + '?type=months');
+      res = await fetchJSONP(withKey(GAS_URL + '?type=months'));
     } catch (firstErr) {
       // 1回だけリトライ（初回アクセス時のGAS起動待ちによる遅延を吸収）
-      res = await fetchJSONP(GAS_URL + '?type=months');
+      res = await fetchJSONP(withKey(GAS_URL + '?type=months'));
     }
     const data = res;
     const months = (data.months || []).sort().reverse();
@@ -572,11 +580,11 @@ async function loadAll(nocache) {
   setStatus(nocache ? '最新データを取得中...' : '読み込み中...', true);
 
   // 依存関係のない通信をまとめて同時に開始（読み込み高速化）
-  const flatUrl     = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym);
-  const prevFlatUrl = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(prevYm);
-  const reportUrl   = GAS_URL + '?type=reports&ym=' + encodeURIComponent(ym);
-  const shinkiUrl   = GAS_URL + '?type=shinki_anken';
-  const actionsUrl  = GAS_URL + '?type=actions';
+  const flatUrl     = withKey(GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym));
+  const prevFlatUrl = withKey(GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(prevYm));
+  const reportUrl   = withKey(GAS_URL + '?type=reports&ym=' + encodeURIComponent(ym));
+  const shinkiUrl   = withKey(GAS_URL + '?type=shinki_anken');
+  const actionsUrl  = withKey(GAS_URL + '?type=actions');
   const flatPromise     = fetchJSONP(flatUrl);
   const prevFlatPromise = fetchJSONP(prevFlatUrl).catch(function() { return null; });
   const reportPromise   = fetchJSONP(reportUrl).catch(function() { return null; });
@@ -984,7 +992,7 @@ async function onDeptChange() {
   if (!cachedTrend[dept]) {
     document.getElementById('chart-status').textContent = '月次データ取得中...';
     try {
-      const url = GAS_URL + '?type=trend_flat&dept=' + encodeURIComponent(dept);
+      const url = withKey(GAS_URL + '?type=trend_flat&dept=' + encodeURIComponent(dept));
       const data = await fetchJSONP(url);
       cachedTrend[dept] = data.trend || [];
     } catch(err) {
@@ -996,7 +1004,7 @@ async function onDeptChange() {
   // トータルメンテナンス課：全年度比較用データも取得（初回のみ）
   if (dept === "トータルメンテナンス課" && !cachedTotalMenteYears) {
     try {
-      const url2 = GAS_URL + '?type=totalmente_years';
+      const url2 = withKey(GAS_URL + '?type=totalmente_years');
       const data2 = await fetchJSONP(url2);
       cachedTotalMenteYears = data2.categories || [];
     } catch(err) {
