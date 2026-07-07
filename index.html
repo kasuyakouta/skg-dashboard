@@ -371,8 +371,16 @@ function withKey(url) {
 }
 
 // GAS側 getAvailableMonths_() と同じ内容（通信失敗時のフォールバック用）
-const FALLBACK_MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
-                         "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
+// ※ハードコードではなく、今日の日付から年度を自動計算する（年度が変わっても更新不要）
+function computeFallbackMonths() {
+  const now = new Date();
+  const fy = (now.getMonth() + 1 >= 4) ? now.getFullYear() : now.getFullYear() - 1;
+  const months = [];
+  for (let m = 4; m <= 12; m++) months.push(fy + '-' + String(m).padStart(2, '0'));
+  for (let m = 1; m <= 3; m++)  months.push((fy + 1) + '-' + String(m).padStart(2, '0'));
+  return months;
+}
+const FALLBACK_MONTHS = computeFallbackMonths();
 
 const ALL_DEPTS = [
   "地域インフラ共創部1課","地域インフラ共創部2課",
