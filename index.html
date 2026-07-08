@@ -844,11 +844,10 @@ function renderHr() {
     items.forEach(item => {
       const cls = catClass[item.category] || '';
       const statusCls = item.status ? 'hr-status-' + item.status : '';
-      const photoIds = [item.photo1, item.photo2, item.photo3].filter(Boolean);
-      const photosHtml = photoIds.length
-        ? photoIds.map(function(id) {
-            const url = withKey(GAS_URL + '?type=photo&id=' + encodeURIComponent(id));
-            return '<img src="' + url + '" class="hr-photo-thumb" onclick="openLightbox(\'' + url + '\')" loading="lazy">';
+      const photoUrls = [item.photo1, item.photo2, item.photo3].filter(Boolean);
+      const photosHtml = photoUrls.length
+        ? photoUrls.map(function(url) {
+            return '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy">';
           }).join('')
         : '<span style="color:var(--muted);font-size:12px;">-</span>';
       html += '<div class="hr-item ' + cls + '">'
