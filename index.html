@@ -7,24 +7,24 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --primary: #1F4E78;
-    --accent: #2E86C1;
-    --bg: #F7F8FA;
+    --primary: #1D4B3E;
+    --accent: #3E7C6F;
+    --bg: #F5F3EE;
     --card: #FFFFFF;
-    --text: #1A1A2E;
-    --muted: #6B7280;
-    --muted2: #9AA1AC;
-    --border: #E5E9EF;
-    --success: #16A085;
-    --success-bg: #E3F5EF;
-    --success-text: #0F6E56;
-    --warning: #E67E22;
-    --warning-bg: #FDF3E4;
-    --warning-text: #92610C;
-    --danger: #C0392B;
-    --danger-bg: #FBEAEA;
-    --danger-text: #96251C;
-    --radius: 12px;
+    --text: #262421;
+    --muted: #78716A;
+    --muted2: #9C948A;
+    --border: #E4DFD5;
+    --success: #3E7C6F;
+    --success-bg: #EAF0EC;
+    --success-text: #1D4B3E;
+    --warning: #C98A2B;
+    --warning-bg: #FBF0DE;
+    --warning-text: #8A5A12;
+    --danger: #B3492E;
+    --danger-bg: #FCEFE9;
+    --danger-text: #8A3520;
+    --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
@@ -135,7 +135,7 @@
   .delta-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
   .delta-up   { background: var(--success-bg); color: var(--success-text); }
   .delta-down { background: var(--danger); color: #fff; }
-  .delta-flat { background: #EEF0F3; color: #8A909B; }
+  .delta-flat { background: #EDEAE1; color: #8A8377; }
 
   /* 次回までのアクション */
   .action-list { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
@@ -156,7 +156,7 @@
   .rate-over { background: var(--success-bg); color: var(--success-text); }
   .rate-near { background: var(--warning-bg); color: var(--warning-text); }
   .rate-low  { background: var(--danger-bg); color: var(--danger-text); }
-  .rate-na   { background: #EEF0F3; color: #8A909B; }
+  .rate-na   { background: #EDEAE1; color: #8A8377; }
 
   /* 案件ステータスバッジ（新規案件タブ用） */
   .cat-badge {
@@ -165,10 +165,10 @@
   }
   .cat-badge.cat-good   { background: var(--success-bg); color: var(--success-text); }
   .cat-badge.cat-bad    { background: var(--danger-bg);  color: var(--danger-text); }
-  .cat-badge.cat-normal { background: #EEF0F3; color: #8A909B; }
+  .cat-badge.cat-normal { background: #EDEAE1; color: #8A8377; }
 
   /* プログレスバー（細く・意味で色分け） */
-  .progress-wrap { background: #EEF0F3; border-radius: 3px; height: 5px;
+  .progress-wrap { background: #EDEAE1; border-radius: 3px; height: 5px;
                    width: 100%; overflow: hidden; display: block; margin-top: 2px; }
   .progress-bar  { height: 100%; border-radius: 3px; transition: width 0.4s; }
 
@@ -185,12 +185,12 @@
     border-radius: 8px;
     border: 1px solid var(--border);
     border-left: 4px solid var(--accent);
-    background: #F8FAFC; overflow: hidden;
+    background: #FAF8F4; overflow: hidden;
   }
   .hr-item.cat-good   { border-left-color: var(--success); }
   .hr-item.cat-bad    { border-left-color: var(--warning); }
   .hr-item.cat-safety { border-left-color: var(--danger); }
-  .hr-item.cat-enter  { border-left-color: #8E64AD; }
+  .hr-item.cat-enter  { border-left-color: #6B5B95; }
   .hr-field { padding: 10px 12px; border-right: 1px solid var(--border); }
   .hr-field:last-child { border-right: none; }
   .hr-field-label { display: none; }
@@ -211,7 +211,7 @@
   /* 人事報告の写真サムネイル・拡大表示 */
   .hr-photo-thumb {
     width: 32px; height: 32px; object-fit: cover; border-radius: 4px;
-    margin-right: 4px; cursor: zoom-in; border: 1px solid var(--border); background: #EEF0F3;
+    margin-right: 4px; cursor: zoom-in; border: 1px solid var(--border); background: #EDEAE1;
   }
   .lightbox-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
@@ -234,8 +234,8 @@
 
   /* エラー表示 */
   .error-box {
-    background: #FDEDEC; border: 1px solid #E74C3C; border-radius: 8px;
-    padding: 16px; color: #922B21; font-size: 13px;
+    background: var(--danger-bg); border: 1px solid var(--danger); border-radius: 8px;
+    padding: 16px; color: var(--danger-text); font-size: 13px;
   }
 
   /* 品目タブ */
@@ -1250,11 +1250,11 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
         {
           label: '実績',
           data: actuals,
-          borderColor: '#E67E22',
-          backgroundColor: 'rgba(230,126,34,0.08)',
+          borderColor: '#C98A2B',
+          backgroundColor: 'rgba(201,138,43,0.10)',
           borderWidth: 2.5,
           borderDash: [],
-          pointBackgroundColor: '#E67E22',
+          pointBackgroundColor: '#C98A2B',
           pointRadius: 4,
           tension: 0.3,
           fill: true,
@@ -1293,8 +1293,8 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
 // （凡例クリックで特定の年度だけ表示/非表示を切り替え可能＝過去年度への「切替」も兼ねる）
 // ============================================================
 const ALLYEARS_COLORS = [
-  '#E67E22', '#2E86C1', '#16A085', '#C0392B',
-  '#8E44AD', '#7F8C8D', '#D4AC0D', '#2C3E50'
+  '#C98A2B', '#3E7C6F', '#B3492E', '#6B5B95',
+  '#1D4B3E', '#A67C52', '#5C7A99', '#8A8377'
 ];
 
 function renderAllYearsChart(dept, category) {
@@ -1424,7 +1424,7 @@ function makeCard(g) {
     else if (rate >= 80) badgeCls = 'rate-near';
     else badgeCls = 'rate-low';
   }
-  return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#F8FAFC;margin-bottom:8px">'
+  return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#FAF8F4;margin-bottom:8px">'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">' + g.item + '（' + g.metric + '）</div>'
     + '<div style="display:flex;justify-content:space-between;align-items:center">'
     + '<div>'
