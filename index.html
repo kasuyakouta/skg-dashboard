@@ -49,6 +49,8 @@
     background: var(--card); border-bottom: 1px solid var(--border);
     padding: 12px 24px; display: flex; align-items: center; gap: 16px;
     flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
   }
   .controls label { font-size: 13px; color: var(--muted); }
   .controls select {
@@ -106,8 +108,8 @@
               padding-bottom: 8px; border-bottom: 2px solid var(--border); }
 
   /* KPIサマリーバー */
-  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
-  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
   .kpi-card.kpi-danger { background: var(--danger-bg); border-color: transparent; }
   .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
   .kpi-value { font-size: 32px; font-weight: 600; color: var(--text); }
@@ -115,17 +117,17 @@
   .kpi-danger .kpi-label, .kpi-danger .kpi-value { color: var(--danger-text); }
 
   /* 部署サマリーカード */
-  .dept-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .dept-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-bottom: 10px; }
   .dept-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 16px; transition: border-color 0.15s;
+    padding: 13px; transition: border-color 0.15s;
   }
   .dept-card.state-danger { border-color: var(--danger); border-width: 1px; background: var(--danger-bg); }
   .dept-card.state-empty { opacity: 0.55; }
-  .dept-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 8px; }
+  .dept-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 9px; gap: 8px; }
   .dept-card-name { font-size: 16px; font-weight: 600; color: var(--text); }
   .dept-card-metric { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .dept-card-numbers { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  .dept-card-numbers { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
   .dept-card-actual { font-size: 26px; font-weight: 600; color: var(--text); }
   .dept-card-target { font-size: 13px; color: var(--muted); }
   .dept-card-empty-text { font-size: 13px; color: var(--muted); }
@@ -180,7 +182,7 @@
   .hr-list { display: flex; flex-direction: column; gap: 8px; }
   .hr-item {
     display: grid;
-    grid-template-columns: 110px 160px 1fr 90px 100px;
+    grid-template-columns: 90px 150px 1fr 90px 85px;
     gap: 0; align-items: stretch;
     border-radius: 8px;
     border: 1px solid var(--border);
@@ -202,7 +204,7 @@
   .hr-field-value.hr-status-対応中 { color: var(--warning-text); font-weight: 600; }
   .hr-field-value.hr-status-未対応 { color: var(--danger-text); font-weight: 600; }
   .hr-list-head {
-    display: grid; grid-template-columns: 110px 160px 1fr 90px 100px;
+    display: grid; grid-template-columns: 90px 150px 1fr 90px 85px;
     padding: 0 0 6px; margin-bottom: 6px;
     border-bottom: 1px solid var(--border);
   }
@@ -593,7 +595,7 @@ async function init() {
 async function loadAll(nocache) {
   const ym = document.getElementById('ym-select').value;
   if (!ym) return;
-  document.getElementById('header-ym').textContent = ym;
+  document.getElementById('header-ym').textContent = '読み込み中...';
   cachedPerf = [];
   cachedHr = [];
   cachedSummary = [];
@@ -670,7 +672,7 @@ async function loadAll(nocache) {
   }
 
   document.getElementById('header-ym').textContent =
-    ym + '（実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件）';
+    '実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件';
   setStatus('', false);
 }
 
