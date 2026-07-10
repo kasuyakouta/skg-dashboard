@@ -269,10 +269,9 @@
     max-width: 100%; max-height: 380px; border-radius: 10px; cursor: zoom-in;
     display: block; margin: 0 auto; border: 1px solid var(--border);
   }
-  .infographic-upload-toggle { margin-top: 14px; text-align: right; }
-  .btn-link {
-    background: none; border: none; color: var(--accent); font-size: 12px;
-    cursor: pointer; padding: 4px 0; text-decoration: underline;
+  .infographic-hint {
+    margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border);
+    font-size: 12px; color: var(--muted); text-align: right;
   }
 </style>
 </head>
@@ -919,38 +918,11 @@ function renderInfographicReport() {
     html += '<div class="empty" style="padding:12px 0;">この月のAIレポート（グループ全体）はまだ登録されていません</div>';
   }
 
-  html += '<div class="infographic-upload-toggle">'
-      + '<button class="btn-link" onclick="toggleInfographicUpload()">画像をアップロード / 差し替える ▾</button>'
-    + '</div>'
-    + '<div id="infographic-upload-area" style="display:none;margin-top:10px;">'
-      + '<iframe id="infographic-upload-frame" style="width:100%;height:340px;border:1px solid var(--border);border-radius:10px;" src=""></iframe>'
-    + '</div>';
+  html += '<div class="infographic-hint">画像・文章の登録／更新は、スプレッドシートの「AIレポート下書き」シートから行ってください（B1で「全体（グループ）」を選択）。</div>';
 
   html += '</div>';
   body.innerHTML = html;
 }
-
-// 月次インフォグラフィックのアップロード欄（iframe）を開閉する
-function toggleInfographicUpload() {
-  const area = document.getElementById('infographic-upload-area');
-  const frame = document.getElementById('infographic-upload-frame');
-  const isHidden = (area.style.display === 'none' || area.style.display === '');
-  if (isHidden) {
-    const ym = document.getElementById('ym-select').value;
-    frame.src = withKey(GAS_URL + '?page=infographic_upload&ym=' + encodeURIComponent(ym));
-    area.style.display = 'block';
-  } else {
-    area.style.display = 'none';
-    frame.src = '';
-  }
-}
-
-// アップロードページ（iframe）から完了通知を受け取ったら、最新データを再取得する
-window.addEventListener('message', function(e) {
-  if (e.data && e.data.type === 'skgInfographicUploaded') {
-    loadAll(true);
-  }
-});
 
 // ============================================================
 // 新規案件（感動デザイン課）：年月セレクトの作成
