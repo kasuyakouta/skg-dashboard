@@ -7,24 +7,24 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --primary: #1D4B3E;
-    --accent: #3E7C6F;
-    --bg: #F5F3EE;
+    --primary: #1F4E78;
+    --accent: #2E86C1;
+    --bg: #F7F8FA;
     --card: #FFFFFF;
-    --text: #262421;
-    --muted: #78716A;
-    --muted2: #9C948A;
-    --border: #E4DFD5;
-    --success: #3E7C6F;
-    --success-bg: #EAF0EC;
-    --success-text: #1D4B3E;
-    --warning: #C98A2B;
-    --warning-bg: #FBF0DE;
-    --warning-text: #8A5A12;
-    --danger: #B3492E;
-    --danger-bg: #FCEFE9;
-    --danger-text: #8A3520;
-    --radius: 10px;
+    --text: #1A1A2E;
+    --muted: #6B7280;
+    --muted2: #9AA1AC;
+    --border: #E5E9EF;
+    --success: #16A085;
+    --success-bg: #E3F5EF;
+    --success-text: #0F6E56;
+    --warning: #E67E22;
+    --warning-bg: #FDF3E4;
+    --warning-text: #92610C;
+    --danger: #C0392B;
+    --danger-bg: #FBEAEA;
+    --danger-text: #96251C;
+    --radius: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
@@ -49,8 +49,6 @@
     background: var(--card); border-bottom: 1px solid var(--border);
     padding: 12px 24px; display: flex; align-items: center; gap: 16px;
     flex-wrap: wrap;
-    position: sticky; top: 0; z-index: 100;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
   }
   .controls label { font-size: 13px; color: var(--muted); }
   .controls select {
@@ -72,10 +70,6 @@
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
   }
   #loading-text { font-size: 14px; color: var(--muted); }
 
@@ -108,69 +102,42 @@
               padding-bottom: 8px; border-bottom: 2px solid var(--border); }
 
   /* KPIサマリーバー */
-  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
-  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
   .kpi-card.kpi-danger { background: var(--danger-bg); border-color: transparent; }
   .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-  .kpi-value { font-size: 32px; font-weight: 600; color: var(--text); }
-  .kpi-value .kpi-unit { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+  .kpi-value { font-size: 24px; font-weight: 600; color: var(--text); }
+  .kpi-value .kpi-unit { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 2px; }
   .kpi-danger .kpi-label, .kpi-danger .kpi-value { color: var(--danger-text); }
 
   /* 部署サマリーカード */
-  .dept-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-bottom: 10px; }
+  .dept-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
   .dept-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 13px; transition: border-color 0.15s;
+    padding: 16px; transition: border-color 0.15s;
   }
-  .dept-card.state-danger { border-color: var(--danger); border-width: 1px; background: var(--danger-bg); }
+  .dept-card.state-danger { border-color: var(--danger); border-width: 1px; }
   .dept-card.state-empty { opacity: 0.55; }
-  .dept-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 9px; gap: 8px; }
-  .dept-card-name { font-size: 16px; font-weight: 600; color: var(--text); }
+  .dept-card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 8px; }
+  .dept-card-name { font-size: 14px; font-weight: 600; color: var(--text); }
   .dept-card-metric { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .dept-card-numbers { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
-  .dept-card-actual { font-size: 26px; font-weight: 600; color: var(--text); }
-  .dept-card-target { font-size: 13px; color: var(--muted); }
+  .dept-card-numbers { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  .dept-card-actual { font-size: 20px; font-weight: 600; color: var(--text); }
+  .dept-card-target { font-size: 12px; color: var(--muted); }
   .dept-card-empty-text { font-size: 13px; color: var(--muted); }
-  .dept-card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-
-  /* 前月比バッジ */
-  .delta-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
-  .delta-up   { background: var(--success-bg); color: var(--success-text); }
-  .delta-down { background: var(--danger); color: #fff; }
-  .delta-flat { background: #EDEAE1; color: #8A8377; }
-
-  /* 次回までのアクション */
-  .action-list { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
-  .action-list-title { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
-  .action-item { font-size: 12px; color: var(--text); line-height: 1.6; }
-  .action-status-todo, .action-status-inprogress {
-    display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px;
-    border-radius: 8px; margin-right: 6px;
-  }
-  .action-status-todo       { background: var(--danger); color: #fff; }
-  .action-status-inprogress { background: var(--warning-bg); color: var(--warning-text); }
 
   /* 達成率バッジ */
   .rate-badge {
-    display: inline-block; padding: 4px 12px; border-radius: 12px;
-    font-size: 14px; font-weight: 600; white-space: nowrap;
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
   }
   .rate-over { background: var(--success-bg); color: var(--success-text); }
   .rate-near { background: var(--warning-bg); color: var(--warning-text); }
   .rate-low  { background: var(--danger-bg); color: var(--danger-text); }
-  .rate-na   { background: #EDEAE1; color: #8A8377; }
-
-  /* 案件ステータスバッジ（新規案件タブ用） */
-  .cat-badge {
-    display: inline-block; padding: 3px 10px; border-radius: 12px;
-    font-size: 12px; font-weight: 600; white-space: nowrap;
-  }
-  .cat-badge.cat-good   { background: var(--success-bg); color: var(--success-text); }
-  .cat-badge.cat-bad    { background: var(--danger-bg);  color: var(--danger-text); }
-  .cat-badge.cat-normal { background: #EDEAE1; color: #8A8377; }
+  .rate-na   { background: #EEF0F3; color: #8A909B; }
 
   /* プログレスバー（細く・意味で色分け） */
-  .progress-wrap { background: #EDEAE1; border-radius: 3px; height: 5px;
+  .progress-wrap { background: #EEF0F3; border-radius: 3px; height: 5px;
                    width: 100%; overflow: hidden; display: block; margin-top: 2px; }
   .progress-bar  { height: 100%; border-radius: 3px; transition: width 0.4s; }
 
@@ -182,17 +149,15 @@
   .hr-list { display: flex; flex-direction: column; gap: 8px; }
   .hr-item {
     display: grid;
-    grid-template-columns: 90px 150px 1fr 90px 85px;
+    grid-template-columns: 110px 130px 1fr 90px;
     gap: 0; align-items: stretch;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    border-left: 4px solid var(--accent);
-    background: #FAF8F4; overflow: hidden;
+    border-radius: 8px; border-left: 4px solid var(--accent);
+    background: #F8FAFC; overflow: hidden;
   }
   .hr-item.cat-good   { border-left-color: var(--success); }
   .hr-item.cat-bad    { border-left-color: var(--warning); }
   .hr-item.cat-safety { border-left-color: var(--danger); }
-  .hr-item.cat-enter  { border-left-color: #6B5B95; }
+  .hr-item.cat-enter  { border-left-color: #8E64AD; }
   .hr-field { padding: 10px 12px; border-right: 1px solid var(--border); }
   .hr-field:last-child { border-right: none; }
   .hr-field-label { display: none; }
@@ -204,23 +169,10 @@
   .hr-field-value.hr-status-対応中 { color: var(--warning-text); font-weight: 600; }
   .hr-field-value.hr-status-未対応 { color: var(--danger-text); font-weight: 600; }
   .hr-list-head {
-    display: grid; grid-template-columns: 90px 150px 1fr 90px 85px;
-    padding: 0 0 6px; margin-bottom: 6px;
-    border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: 110px 130px 1fr 90px;
+    padding: 0 0 4px; margin-bottom: 2px;
   }
   .hr-list-head span { font-size: 11px; color: var(--muted); padding: 0 12px; font-weight: 600; }
-
-  /* 人事報告の写真サムネイル・拡大表示 */
-  .hr-photo-thumb {
-    width: 32px; height: 32px; object-fit: cover; border-radius: 4px;
-    margin-right: 4px; cursor: zoom-in; border: 1px solid var(--border); background: #EDEAE1;
-  }
-  .lightbox-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-    z-index: 300; align-items: center; justify-content: center; cursor: zoom-out;
-  }
-  .lightbox-overlay.active { display: flex; }
-  .lightbox-overlay img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
   @media (max-width: 640px) {
     .hr-item, .hr-list-head { grid-template-columns: 1fr; }
     .hr-field { border-right: none; border-bottom: 1px solid var(--border); }
@@ -236,8 +188,8 @@
 
   /* エラー表示 */
   .error-box {
-    background: var(--danger-bg); border: 1px solid var(--danger); border-radius: 8px;
-    padding: 16px; color: var(--danger-text); font-size: 13px;
+    background: #FDEDEC; border: 1px solid #E74C3C; border-radius: 8px;
+    padding: 16px; color: #922B21; font-size: 13px;
   }
 
   /* 品目タブ */
@@ -258,11 +210,38 @@
   /* 空状態 */
   .empty { text-align: center; color: var(--muted); padding: 40px; font-size: 13px; }
 
-  /* AIレポート */
+  /* AIレポート（グループ全体：インフォグラフィック＋文章） */
   .report-card { margin-bottom: 16px; }
   .report-text { white-space: pre-line; font-size: 13px; line-height: 1.8; color: var(--text); }
   .report-meta { font-size: 11px; color: var(--muted2); margin-top: 10px; text-align: right; }
-  .report-card-empty { border-style: dashed; opacity: 0.7; }
+
+  .infographic-thumb {
+    display: block; width: 100%; max-width: 460px; border-radius: 10px;
+    border: 1px solid var(--border); cursor: zoom-in; transition: box-shadow 0.2s;
+  }
+  .infographic-thumb:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+
+  .lightbox-overlay {
+    position: fixed; inset: 0; background: rgba(10,20,30,0.82);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 500; cursor: zoom-out; padding: 24px;
+  }
+  .lightbox-overlay img {
+    max-width: 94vw; max-height: 94vh; border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  }
+
+  .infographic-upload-block {
+    margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border);
+  }
+  .infographic-upload-toggle {
+    font-size: 12px; color: var(--accent); cursor: pointer;
+    text-decoration: underline; user-select: none; background: none; border: none; padding: 0;
+  }
+  .infographic-upload-frame {
+    display: none; width: 100%; height: 220px; margin-top: 10px;
+    border: 1px solid var(--border); border-radius: 8px;
+  }
 </style>
 </head>
 <body>
@@ -279,13 +258,7 @@
 
 <div class="controls">
   <label>対象年月</label>
-  <button onclick="shiftYmSelect(-1)" title="前月へ" style="
-    padding:6px 10px; border-radius:6px; border:1px solid var(--border);
-    background:#fff; cursor:pointer; font-size:13px; color:var(--muted);">◀ 前月</button>
   <select id="ym-select" onchange="loadAll()"><option value="">読み込み中...</option></select>
-  <button onclick="shiftYmSelect(1)" title="翌月へ" style="
-    padding:6px 10px; border-radius:6px; border:1px solid var(--border);
-    background:#fff; cursor:pointer; font-size:13px; color:var(--muted);">翌月 ▶</button>
   <button onclick="loadAll()" title="最新のフラットログを再読み込み" style="
     padding:6px 12px; border-radius:6px; border:1px solid var(--border);
     background:#fff; cursor:pointer; font-size:13px; color:var(--muted);
@@ -295,10 +268,9 @@
 <main>
   <div class="tabs">
     <div class="tab active" onclick="showTab('tab-summary', this)">📋 全部署サマリー</div>
-    <div class="tab" onclick="showTab('tab-report', this)">📝 AIレポート</div>
     <div class="tab" onclick="showTab('tab-hr', this)">👥 人事コメント</div>
     <div class="tab" onclick="showTab('tab-perf', this)">📈 部署別実績</div>
-    <div class="tab" onclick="showTab('tab-shinki', this)">🏢 新規案件</div>
+    <div class="tab" onclick="showTab('tab-report', this)">📝 AIレポート</div>
   </div>
 
   <!-- サマリータブ -->
@@ -344,164 +316,27 @@
     <div id="perf-body"><div class="empty">データがありません</div></div>
   </div>
 
-  <!-- 新規案件タブ（感動デザイン課） -->
-  <div id="tab-shinki" class="tab-content">
-    <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;gap:12px;">
-      <label>対象年月</label>
-      <select id="shinki-ym-select" onchange="renderShinkiAnken()">
-        <option value="">すべて</option>
-      </select>
-      <label style="margin-left:8px;">ランク</label>
-      <select id="shinki-rank-select" onchange="renderShinkiAnken()">
-        <option value="">すべて</option>
-        <option value="S">S</option>
-        <option value="A">A</option>
-        <option value="B">B</option>
-        <option value="C">C</option>
-      </select>
-      <label style="margin-left:8px;">結果</label>
-      <select id="shinki-result-select" onchange="renderShinkiAnken()">
-        <option value="">すべて</option>
-      </select>
-    </div>
-    <div id="shinki-body"><div class="empty">データがありません</div></div>
-  </div>
-
   <!-- AIレポートタブ -->
   <div id="tab-report" class="tab-content">
     <div id="report-body"><div class="empty">この月のAIレポートはまだ生成されていません</div></div>
   </div>
 </main>
 
-<div id="photo-lightbox" class="lightbox-overlay" onclick="closeLightbox()">
-  <img id="lightbox-img" src="">
-</div>
-
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbybAvXkNCx9avzHmPW9HfThs7Z6o5tHHoC_QkfFcYLXbodTRUhuwbK8tpjno1SYo56_9g/exec";
 
-// 簡易アクセスキー（GAS側のスクリプトプロパティ DASHBOARD_ACCESS_KEY と同じ値にすること）
-// ※index.htmlはソースが公開されているため、これは「URLを偶然踏んだだけの第三者」を防ぐ
-//   軽い抑止に過ぎず、本格的なアクセス制御ではない点に注意
-const ACCESS_KEY = "b91c5c68e0a8d1eb7004bfad";
-function withKey(url) {
-  return url + (url.indexOf('?') > -1 ? '&' : '?') + 'key=' + encodeURIComponent(ACCESS_KEY);
-}
+// スクリプトプロパティ「DASHBOARD_ACCESS_KEY」を設定している場合のみ、ここに同じ値を入れる
+// （未設定なら空文字のままでOK。GAS側もキー未設定なら常にチェックをスキップします）
+const ACCESS_KEY = "";
 
 // GAS側 getAvailableMonths_() と同じ内容（通信失敗時のフォールバック用）
-// ※ハードコードではなく、今日の日付から年度を自動計算する（年度が変わっても更新不要）
-function computeFallbackMonths() {
-  const now = new Date();
-  const fy = (now.getMonth() + 1 >= 4) ? now.getFullYear() : now.getFullYear() - 1;
-  const months = [];
-  for (let m = 4; m <= 12; m++) months.push(fy + '-' + String(m).padStart(2, '0'));
-  for (let m = 1; m <= 3; m++)  months.push((fy + 1) + '-' + String(m).padStart(2, '0'));
-  return months;
-}
-const FALLBACK_MONTHS = computeFallbackMonths();
-
-const ALL_DEPTS = [
-  "地域インフラ共創部1課","地域インフラ共創部2課",
-  "感動デザイン課","総合クリエイト課","トータルメンテナンス課",
-  "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
-];
-
-// 未来の空月ではなく「実績がある中で一番新しい月」をデフォルトにする
-function pickDefaultYm(months) {
-  if (!months.length) return null;
-  const now = new Date();
-  const todayYm = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
-  const pastOrCurrent = months.filter(function(m) { return m <= todayYm; }).sort().reverse();
-  return pastOrCurrent.length ? pastOrCurrent[0] : [...months].sort()[0];
-}
-
-// 年月セレクトを1つ前/次の月へ移動する（前月・翌月ボタン用）
-function shiftYmSelect(delta) {
-  const sel = document.getElementById('ym-select');
-  const options = Array.from(sel.options).map(function(o) { return o.value; }).sort();
-  const idx = options.indexOf(sel.value);
-  if (idx === -1) return;
-  const newIdx = idx + delta;
-  if (newIdx < 0 || newIdx >= options.length) return;
-  sel.value = options[newIdx];
-  loadAll();
-}
-
-// 年月文字列をnヶ月シフトする（前月比の算出に使用）
-function shiftYmString(ym, deltaMonths) {
-  const parts = ym.split("-");
-  const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1 + deltaMonths, 1);
-  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
-}
-
-// 部署ごとの主要指標定義（サマリーカードで表示する指標）
-const DEPT_MAIN = {
-  "地域インフラ共創部1課":  { metric:"粗利益", unit:"千円" },
-  "地域インフラ共創部2課":  { metric:"数量",   unit:"t"    },
-  "感動デザイン課":         { metric:"数量",   unit:"t"    },
-  "総合クリエイト課":       { metric:null,     unit:null   },
-  "トータルメンテナンス課": { metric:null,     unit:null   },
-  "Re\"バース仙台港":       { metric:"数量",   unit:"t"    },
-  "Re\"バース仙台岩切":     { metric:"数量",   unit:"t"    },
-  "Re\"バース仙台扇町":     { metric:"数量",   unit:"t"    },
-};
-
-// 部署によっては「合計」品目と「内訳品目」が両方記録されており、
-// 単純合算すると二重カウントになるため、集計対象の品目を制限する
-// （未定義の部署は従来通り全品目を合算）
-const DEPT_SUMMARY_ITEMS = {
-  "地域インフラ共創部2課": ["RPS_合計"],
-  "Re\"バース仙台扇町": ["古紙合計"],
-};
-
-// 人事コメントのカテゴリ分類（サマリーカードのバッジ判定にも使用）
-const HR_CAT_CLASS = {
-  '頑張り・好事例': 'cat-good',
-  '安全衛生（事故・労災）': 'cat-safety',
-  '問題行動・クレーム対応': 'cat-bad',
-  '安全衛生': 'cat-safety',
-  '問題行動・クレーム': 'cat-bad',
-  '入退社・異動': 'cat-enter',
-};
-const HR_NEGATIVE_CLASSES = ['cat-bad', 'cat-safety'];
-
-// 部署別の目標・実績サマリーを計算する（当月・前月の両方で同じロジックを使うため関数化）
-function computeDeptSummary(perfRecords, ym, depts) {
-  return depts.map(function(dept) {
-    const allRecs = perfRecords.filter(function(r){ return r.dept === dept; });
-    const summaryItems = DEPT_SUMMARY_ITEMS[dept];
-    const recs = summaryItems
-      ? allRecs.filter(function(r){ return summaryItems.includes(r.item); })
-      : allRecs;
-    const mainDef = DEPT_MAIN[dept] || { metric:"数量", unit:null };
-    let totalTarget=0, totalActual=0, itemCount=0;
-    recs.forEach(function(r){
-      const metricMatch = !mainDef.metric || r.metric === mainDef.metric;
-      const unitMatch   = !mainDef.unit   || r.unit   === mainDef.unit;
-      if (metricMatch && unitMatch) {
-        if(typeof r.target==="number" && r.target > 0) totalTarget+=r.target;
-        if(typeof r.actual==="number" && r.actual > 0) totalActual+=r.actual;
-        itemCount++;
-      }
-    });
-    return {
-      dept:dept, ym:ym,
-      mainMetric: mainDef.metric,
-      mainUnit:   mainDef.unit,
-      totalTarget:totalTarget, totalActual:totalActual,
-      achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*100):null,
-      itemCount:itemCount,
-      prevAchieveRate: null
-    };
-  });
-}
+const FALLBACK_MONTHS = ["2026-04","2026-05","2026-06","2026-07","2026-08","2026-09",
+                         "2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
 
 let cachedPerf = [];
 let cachedHr = [];
 let cachedSummary = [];
-let cachedReports = [];
-let cachedShinki = [];
-let cachedActions = [];
+let cachedInfographic = null; // 月次インフォグラフィック（グループ全体：画像＋文章）
 
 // ============================================================
 // JSONP fetch（CORSを回避）
@@ -547,10 +382,10 @@ async function init() {
   try {
     let res;
     try {
-      res = await fetchJSONP(withKey(GAS_URL + '?type=months'));
+      res = await fetchJSONP(GAS_URL + '?type=months');
     } catch (firstErr) {
       // 1回だけリトライ（初回アクセス時のGAS起動待ちによる遅延を吸収）
-      res = await fetchJSONP(withKey(GAS_URL + '?type=months'));
+      res = await fetchJSONP(GAS_URL + '?type=months');
     }
     const data = res;
     const months = (data.months || []).sort().reverse();
@@ -569,8 +404,6 @@ async function init() {
         sel.appendChild(opt);
       });
     }
-    const defaultYm1 = pickDefaultYm(months.length ? months : FALLBACK_MONTHS);
-    if (defaultYm1) sel.value = defaultYm1;
     // 最初の年月を自動ロード
     setStatus('', false);
     loadAll();
@@ -583,8 +416,6 @@ async function init() {
       opt.value = m; opt.textContent = m;
       sel.appendChild(opt);
     });
-    const defaultYm2 = pickDefaultYm(FALLBACK_MONTHS);
-    if (defaultYm2) sel.value = defaultYm2;
     loadAll();
   }
 }
@@ -595,69 +426,93 @@ async function init() {
 async function loadAll(nocache) {
   const ym = document.getElementById('ym-select').value;
   if (!ym) return;
-  document.getElementById('header-ym').textContent = '読み込み中...';
+  document.getElementById('header-ym').textContent = ym;
   cachedPerf = [];
   cachedHr = [];
   cachedSummary = [];
 
-  const DEPTS = ALL_DEPTS;
-  const prevYm = shiftYmString(ym, -1);
+  const DEPTS = [
+    "地域インフラ共創部1課","地域インフラ共創部2課",
+    "感動デザイン課","総合クリエイト課","トータルメンテナンス課",
+    "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
+  ];
 
   setStatus(nocache ? '最新データを取得中...' : '読み込み中...', true);
 
-  // 依存関係のない通信をまとめて同時に開始（読み込み高速化）
-  const flatUrl     = withKey(GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym));
-  const prevFlatUrl = withKey(GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(prevYm));
-  const reportUrl   = withKey(GAS_URL + '?type=reports&ym=' + encodeURIComponent(ym));
-  const shinkiUrl   = withKey(GAS_URL + '?type=shinki_anken');
-  const actionsUrl  = withKey(GAS_URL + '?type=actions');
-  const flatPromise     = fetchJSONP(flatUrl);
-  const prevFlatPromise = fetchJSONP(prevFlatUrl).catch(function() { return null; });
-  const reportPromise   = fetchJSONP(reportUrl).catch(function() { return null; });
-  const shinkiPromise   = fetchJSONP(shinkiUrl).catch(function() { return null; });
-  const actionsPromise  = fetchJSONP(actionsUrl).catch(function() { return null; });
-
-  let data = null;
   try {
-    data = await flatPromise;
+    // フラットログから全部署を1回のAPIコールで取得（超高速）
+    const url = GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym);
+    const data = await fetchJSONP(url);
+
     if (data && data.perf) data.perf.forEach(function(r){ cachedPerf.push(r); });
     if (data && data.hr)   data.hr.forEach(function(r){   cachedHr.push(r);   });
+
   } catch(err) {
     setStatus('', false);
     document.getElementById('summary-body').innerHTML =
       '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+    return;
   }
 
-  // サマリー計算（当月）
-  cachedSummary = computeDeptSummary(cachedPerf, ym, DEPTS);
+  const DEPT_MAIN = {
+    "地域インフラ共創部1課":  { metric:"粗利益", unit:"千円" },
+    "地域インフラ共創部2課":  { metric:"数量",   unit:"t"    },
+    "感動デザイン課":         { metric:"数量",   unit:"t"    },
+    "総合クリエイト課":       { metric:null,     unit:null   },
+    "トータルメンテナンス課": { metric:null,     unit:null   },
+    "Re\"バース仙台港":       { metric:"数量",   unit:"t"    },
+    "Re\"バース仙台岩切":     { metric:"数量",   unit:"t"    },
+    "Re\"バース仙台扇町":     { metric:"数量",   unit:"t"    },
+  };
 
-  // 前月比較（前月比バッジ用。取得できなくても本体表示は継続する）
-  const prevFlatData = await prevFlatPromise;
-  const prevPerf = (prevFlatData && prevFlatData.perf) ? prevFlatData.perf : [];
-  const prevSummary = computeDeptSummary(prevPerf, prevYm, DEPTS);
-  cachedSummary.forEach(function(row) {
-    const prevRow = prevSummary.find(function(p){ return p.dept === row.dept; });
-    row.prevAchieveRate = (prevRow && prevRow.achieveRate !== null) ? prevRow.achieveRate : null;
+  // 部署によっては「合計」品目と「内訳品目」が両方記録されており、
+  // 単純合算すると二重カウントになるため、集計対象の品目を制限する
+  // （未定義の部署は従来通り全品目を合算）
+  const DEPT_SUMMARY_ITEMS = {
+    "地域インフラ共創部2課": ["RPS_合計"],
+    "Re\"バース仙台扇町": ["古紙合計"],
+  };
+
+  // サマリー計算（全部署分）
+  cachedSummary = DEPTS.map(function(dept) {
+    const allRecs = cachedPerf.filter(function(r){ return r.dept === dept; });
+    const summaryItems = DEPT_SUMMARY_ITEMS[dept];
+    const recs = summaryItems
+      ? allRecs.filter(function(r){ return summaryItems.includes(r.item); })
+      : allRecs;
+    const mainDef = DEPT_MAIN[dept] || { metric:"数量", unit:null };
+    let totalTarget=0, totalActual=0, itemCount=0;
+    recs.forEach(function(r){
+      const metricMatch = !mainDef.metric || r.metric === mainDef.metric;
+      const unitMatch   = !mainDef.unit   || r.unit   === mainDef.unit;
+      if (metricMatch && unitMatch) {
+        if(typeof r.target==="number" && r.target > 0) totalTarget+=r.target;
+        if(typeof r.actual==="number" && r.actual > 0) totalActual+=r.actual;
+        itemCount++;
+      }
+    });
+    return {
+      dept:dept, ym:ym,
+      mainMetric: mainDef.metric,
+      mainUnit:   mainDef.unit,
+      totalTarget:totalTarget, totalActual:totalActual,
+      achieveRate:totalTarget>0?Math.round(totalActual/totalTarget*1000)/10:null,
+      itemCount:itemCount
+    };
   });
 
-  const actionsData = await actionsPromise;
-  cachedActions = (actionsData && actionsData.list) ? actionsData.list : [];
+  renderSummary(DEPTS);
+  renderHr();
+  renderPerfDetail();
 
-  if (data) {
-    renderSummary(DEPTS);
-    renderHr();
-    renderPerfDetail();
+  try {
+    const reportUrl = GAS_URL + '?type=infographic&ym=' + encodeURIComponent(ym);
+    const reportData = await fetchJSONP(reportUrl);
+    cachedInfographic = (reportData && reportData.infographic) ? reportData.infographic : null;
+  } catch (err) {
+    cachedInfographic = null;
   }
-
-  const reportData = await reportPromise;
-  cachedReports = (reportData && reportData.reports) ? reportData.reports : [];
-  renderReports();
-
-  const shinkiData = await shinkiPromise;
-  cachedShinki = (shinkiData && shinkiData.list) ? shinkiData.list : [];
-  populateShinkiYmSelect();
-  populateShinkiResultSelect();
-  renderShinkiAnken();
+  renderInfographicReport();
 
   const deptSel = document.getElementById('dept-select');
   const prevDept = deptSel.value;
@@ -672,7 +527,7 @@ async function loadAll(nocache) {
   }
 
   document.getElementById('header-ym').textContent =
-    '実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件';
+    ym + '（実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件）';
   setStatus('', false);
 }
 
@@ -693,7 +548,7 @@ function renderSummary(DEPTS_ARG) {
   const achievedCount = withRate.filter(function(r){ return r.achieveRate >= 100; }).length;
   const dangerCount   = withRate.filter(function(r){ return r.achieveRate < 80; }).length;
   const avgRate = withRate.length
-    ? Math.round(withRate.reduce(function(s,r){ return s + r.achieveRate; }, 0) / withRate.length)
+    ? Math.round(withRate.reduce(function(s,r){ return s + r.achieveRate; }, 0) / withRate.length * 10) / 10
     : null;
   const hrCount = (typeof cachedHr !== 'undefined') ? cachedHr.filter(function(r){ return r.content; }).length : 0;
 
@@ -715,42 +570,14 @@ function renderSummary(DEPTS_ARG) {
       + '<div class="kpi-value">' + hrCount + '<span class="kpi-unit"> 件</span></div>'
     + '</div>';
 
-  // 前月比バッジ
-  function buildDeltaBadge(row) {
-    if (row.achieveRate === null || row.prevAchieveRate === null) return '';
-    const delta = Math.round(row.achieveRate - row.prevAchieveRate);
-    if (delta === 0) return '<span class="delta-badge delta-flat">→ 前月と同水準</span>';
-    const sign = delta > 0 ? '+' : '';
-    const cls  = delta > 0 ? 'delta-up' : 'delta-down';
-    const icon = delta > 0 ? '▲' : '▼';
-    return '<span class="delta-badge ' + cls + '">' + icon + ' 前月比' + sign + delta + 'pt</span>';
-  }
+  const sorted = [...cachedSummary].sort(function(a, b) {
+    const ra = a.achieveRate === null ? -1 : a.achieveRate;
+    const rb = b.achieveRate === null ? -1 : b.achieveRate;
+    return rb - ra;
+  });
 
-  // 人事コメントありバッジ（クレーム等があれば警告色、無ければ通常色）
-  function buildHrBadge(dept) {
-    const items = cachedHr.filter(function(h){ return h.dept === dept && h.content; });
-    if (!items.length) return '';
-    const hasNegative = items.some(function(h){ return HR_NEGATIVE_CLASSES.includes(HR_CAT_CLASS[h.category] || ''); });
-    const cls = hasNegative ? 'cat-bad' : 'cat-good';
-    const label = hasNegative ? '⚠ 人事コメントあり' : '💬 人事コメントあり';
-    return '<span class="cat-badge ' + cls + '">' + label + '</span>';
-  }
-
-  // 次回までのアクション（未完了分のみ表示）
-  function buildActionsHtml(dept) {
-    const items = cachedActions.filter(function(a){ return a.dept === dept && a.status !== '完了'; });
-    if (!items.length) return '';
-    let h = '<div class="action-list"><div class="action-list-title">📌 次回までのアクション</div>';
-    items.forEach(function(a) {
-      const statusCls = a.status === '対応中' ? 'action-status-inprogress' : 'action-status-todo';
-      h += '<div class="action-item"><span class="' + statusCls + '">' + esc(a.status || '未着手') + '</span>' + esc(a.text) + '</div>';
-    });
-    h += '</div>';
-    return h;
-  }
-
-  // 1部署分のカードHTMLを生成（要注意セクション・通常グループの両方で共通利用）
-  function buildDeptCard(row) {
+  let html = '<div class="dept-card-grid">';
+  sorted.forEach(function(row) {
     const rate = row.achieveRate;
     const rateStr = rate !== null ? rate + '%' : '-';
     let cls = 'rate-na', barColor = 'var(--muted2)', stateCls = '';
@@ -763,11 +590,8 @@ function renderSummary(DEPTS_ARG) {
     }
     const barWidth = rate !== null ? Math.min(rate, 100) : 0;
     const metricLabel = row.mainMetric ? row.mainMetric + (row.mainUnit ? '（' + row.mainUnit + '）' : '') : '指標なし';
-    const deltaHtml = buildDeltaBadge(row);
-    const hrBadgeHtml = buildHrBadge(row.dept);
-    const actionsHtml = buildActionsHtml(row.dept);
 
-    let cardHtml = '<div class="dept-card ' + stateCls + '">'
+    html += '<div class="dept-card ' + stateCls + '">'
       + '<div class="dept-card-head">'
         + '<div>'
           + '<div class="dept-card-name">' + esc(row.dept) + '</div>'
@@ -777,49 +601,18 @@ function renderSummary(DEPTS_ARG) {
       + '</div>';
 
     if (row.mainMetric) {
-      cardHtml += '<div class="dept-card-numbers">'
+      html += '<div class="dept-card-numbers">'
           + '<span class="dept-card-actual">' + fmtNum(row.totalActual) + '</span>'
           + '<span class="dept-card-target">/ 目標 ' + fmtNum(row.totalTarget) + '</span>'
         + '</div>'
         + '<div class="progress-wrap"><div class="progress-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>';
     } else {
-      cardHtml += '<div class="dept-card-empty-text">数値実績の登録なし</div>';
+      html += '<div class="dept-card-empty-text">数値実績の登録なし</div>';
     }
-
-    if (deltaHtml || hrBadgeHtml) {
-      cardHtml += '<div class="dept-card-badges">' + deltaHtml + hrBadgeHtml + '</div>';
-    }
-    cardHtml += actionsHtml;
-    cardHtml += '</div>';
-    return cardHtml;
-  }
-
-  let html = '';
-
-  // 部署カードの表示順（達成率順ではなく固定の3グループ）
-  const DEPT_GROUPS = [
-    ["地域インフラ共創部1課", "地域インフラ共創部2課", "感動デザイン課"],
-    ["Re\"バース仙台港", "Re\"バース仙台扇町", "Re\"バース仙台岩切"],
-    ["総合クリエイト課", "トータルメンテナンス課"],
-  ];
-  // 実績データが無い場合はカードごと非表示にする部署
-  const HIDE_IF_EMPTY = ["総合クリエイト課", "トータルメンテナンス課"];
-
-  DEPT_GROUPS.forEach(function(group) {
-    const rows = group
-      .map(function(dept) { return cachedSummary.find(function(r){ return r.dept === dept; }); })
-      .filter(function(row) {
-        if (!row) return false;
-        if (HIDE_IF_EMPTY.includes(row.dept) && !row.mainMetric) return false;
-        return true;
-      });
-    if (!rows.length) return;
-
-    html += '<div class="dept-card-grid">';
-    rows.forEach(function(row) { html += buildDeptCard(row); });
     html += '</div>';
   });
-  body.innerHTML = html || '<div class="empty">データがありません</div>';
+  html += '</div>';
+  body.innerHTML = html;
 }
 
 // ============================================================
@@ -831,7 +624,14 @@ function renderHr() {
     body.innerHTML = '<div class="empty">この月の人事コメントはありません</div>';
     return;
   }
-  const catClass = HR_CAT_CLASS;
+  const catClass = {
+    '頑張り・好事例': 'cat-good',
+    '安全衛生（事故・労災）': 'cat-safety',
+    '問題行動・クレーム対応': 'cat-bad',
+    '安全衛生': 'cat-safety',
+    '問題行動・クレーム': 'cat-bad',
+    '入退社・異動': 'cat-enter',
+  };
   const depts = [...new Set(cachedHr.map(r => r.dept))];
   let html = '';
   depts.forEach(dept => {
@@ -840,24 +640,17 @@ function renderHr() {
     html += '<div style="margin-bottom:20px">'
       + '<div style="font-weight:600;color:var(--primary);margin-bottom:8px;font-size:14px">◾ ' + esc(dept) + '</div>'
       + '<div class="hr-list-head">'
-        + '<span>対象者</span><span>カテゴリ</span><span>内容</span><span>対応状況</span><span>写真</span>'
+        + '<span>対象者</span><span>カテゴリ</span><span>内容</span><span>対応状況</span>'
       + '</div>'
       + '<div class="hr-list">';
     items.forEach(item => {
       const cls = catClass[item.category] || '';
       const statusCls = item.status ? 'hr-status-' + item.status : '';
-      const photoUrls = [item.photo1, item.photo2, item.photo3].filter(Boolean);
-      const photosHtml = photoUrls.length
-        ? photoUrls.map(function(url) {
-            return '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy">';
-          }).join('')
-        : '<span style="color:var(--muted);font-size:12px;">-</span>';
       html += '<div class="hr-item ' + cls + '">'
         + '<div class="hr-field"><span class="hr-field-label">対象者</span><span class="hr-field-value">' + (item.targetPerson ? esc(item.targetPerson) : '-') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">カテゴリ</span><span class="hr-field-value">' + esc(item.category || '未分類') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">内容</span><span class="hr-field-value">' + esc(item.content) + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">対応状況</span><span class="hr-field-value ' + statusCls + '">' + (item.status ? esc(item.status) : '-') + '</span></div>'
-        + '<div class="hr-field"><span class="hr-field-label">写真</span><span class="hr-field-value">' + photosHtml + '</span></div>'
         + '</div>';
     });
     html += '</div></div>';
@@ -865,128 +658,95 @@ function renderHr() {
   body.innerHTML = html || '<div class="empty">コメントがありません</div>';
 }
 
-// 人事報告の写真を拡大表示する
-function openLightbox(url) {
-  document.getElementById('lightbox-img').src = url;
-  document.getElementById('photo-lightbox').classList.add('active');
-}
-function closeLightbox() {
-  document.getElementById('photo-lightbox').classList.remove('active');
-  document.getElementById('lightbox-img').src = '';
-}
-
 // ============================================================
-// AIレポート描画
+// AIレポート描画（グループ全体：インフォグラフィック＋文章を1枚のカードで表示）
 // ============================================================
-function renderReports() {
+function renderInfographicReport() {
   const body = document.getElementById('report-body');
-  let html = '';
-  ALL_DEPTS.forEach(function(dept) {
-    const r = cachedReports.find(function(x) { return x.dept === dept; });
-    if (r) {
-      const genDate = r.generatedAt ? new Date(r.generatedAt).toLocaleString('ja-JP') : '';
-      html += '<div class="card report-card">'
-        + '<h2>' + esc(dept) + '</h2>'
-        + '<div class="report-text">' + esc(r.reportText) + '</div>'
-        + '<div class="report-meta">生成日時: ' + esc(genDate) + '</div>'
-        + '</div>';
-    } else {
-      html += '<div class="card report-card report-card-empty">'
-        + '<h2>' + esc(dept) + '</h2>'
-        + '<div class="empty" style="padding:16px 0;">この月のAIレポートは未入力です</div>'
-        + '</div>';
-    }
-  });
-  body.innerHTML = html;
-}
+  const ym = document.getElementById('ym-select').value;
+  const info = cachedInfographic;
 
-// ============================================================
-// 新規案件（感動デザイン課）：年月セレクトの作成
-// ============================================================
-function populateShinkiYmSelect() {
-  const sel = document.getElementById('shinki-ym-select');
-  const current = sel.value;
-  const yms = [...new Set(cachedShinki.map(function(r){ return r.ym; }))].sort().reverse();
+  const uploadSrc = GAS_URL + '?page=infographic_upload&ym=' + encodeURIComponent(ym)
+    + (ACCESS_KEY ? '&key=' + encodeURIComponent(ACCESS_KEY) : '');
+  const uploadBlockHtml =
+    '<div class="infographic-upload-block">'
+    + '<button type="button" class="infographic-upload-toggle" onclick="toggleInfographicUpload(this)">📎 画像をアップロード／差し替える</button>'
+    + '<iframe class="infographic-upload-frame" src="' + uploadSrc + '"></iframe>'
+    + '</div>';
 
-  sel.innerHTML = '<option value="">すべて</option>';
-  yms.forEach(function(ym) {
-    const opt = document.createElement('option');
-    opt.value = ym; opt.textContent = ym;
-    sel.appendChild(opt);
-  });
-  if (yms.includes(current)) sel.value = current;
-}
-
-// ============================================================
-// 新規案件（感動デザイン課）：結果セレクトの作成（実データから動的生成）
-// ============================================================
-function populateShinkiResultSelect() {
-  const sel = document.getElementById('shinki-result-select');
-  const current = sel.value;
-  const results = [...new Set(cachedShinki.map(function(r){ return r.result; }).filter(Boolean))].sort();
-
-  sel.innerHTML = '<option value="">すべて</option>';
-  results.forEach(function(result) {
-    const opt = document.createElement('option');
-    opt.value = result; opt.textContent = result;
-    sel.appendChild(opt);
-  });
-  if (results.includes(current)) sel.value = current;
-}
-
-// ============================================================
-// 新規案件（感動デザイン課）：一覧描画
-// ============================================================
-const SHINKI_RANK_CLASS = { S: 'rate-over', A: 'rate-near', B: 'rate-na', C: 'rate-low' };
-const SHINKI_RESULT_CLASS = {
-  '取得': 'cat-good', 'これから対応': 'cat-normal', '交渉中': 'cat-normal',
-  '取得出来ず': 'cat-bad', '対象外': 'cat-bad'
-};
-
-function renderShinkiAnken() {
-  const body = document.getElementById('shinki-body');
-  const ymFilter     = document.getElementById('shinki-ym-select').value;
-  const rankFilter   = document.getElementById('shinki-rank-select').value;
-  const resultFilter = document.getElementById('shinki-result-select').value;
-
-  const filtered = cachedShinki.filter(function(r) {
-    if (ymFilter && r.ym !== ymFilter) return false;
-    if (rankFilter && r.rank !== rankFilter) return false;
-    if (resultFilter && r.result !== resultFilter) return false;
-    return true;
-  });
-
-  if (!filtered.length) {
-    body.innerHTML = '<div class="empty">該当する案件がありません</div>';
+  if (!info) {
+    body.innerHTML =
+      '<div class="card report-card">'
+      + '<h2>SKグループ 全体レポート（' + esc(ym) + '）</h2>'
+      + '<div class="empty">この月のレポートはまだ登録されていません</div>'
+      + uploadBlockHtml
+      + '</div>';
     return;
   }
 
-  let html = '<div class="dept-card-grid">';
-  filtered.forEach(function(r) {
-    const rankCls = SHINKI_RANK_CLASS[r.rank] || 'rate-na';
-    const resultCls = SHINKI_RESULT_CLASS[r.result] || 'cat-normal';
-    html += '<div class="dept-card">'
-      + '<div class="dept-card-head">'
-        + '<div>'
-          + '<div class="dept-card-name">' + esc(r.propertyName || '(物件名未登録)') + '</div>'
-          + '<div class="dept-card-metric">' + esc(r.date) + '　' + esc(r.place || '') + '</div>'
-        + '</div>'
-        + '<span class="rate-badge ' + rankCls + '">' + esc(r.rank || '-') + '</span>'
-      + '</div>'
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">'
-        + '<span class="cat-badge ' + resultCls + '">' + esc(r.result || '未設定') + '</span>'
-        + (r.salesPerson ? '<span class="cat-badge cat-normal">営業: ' + esc(r.salesPerson) + '</span>' : '')
-      + '</div>'
+  const genDate = info.generatedAt ? new Date(info.generatedAt).toLocaleString('ja-JP') : '';
+  const thumbUrl = info.imageFileId ? ('https://drive.google.com/thumbnail?id=' + info.imageFileId + '&sz=w800')  : '';
+  const fullUrl  = info.imageFileId ? ('https://drive.google.com/thumbnail?id=' + info.imageFileId + '&sz=w2000') : '';
+
+  let html = '<div class="card report-card">'
+    + '<h2>SKグループ 全体レポート（' + esc(ym) + '）</h2>';
+
+  if (thumbUrl) {
+    html += '<img class="infographic-thumb" src="' + thumbUrl + '" alt="月次インフォグラフィック" '
+      + 'onclick="openInfographicLightbox(\'' + fullUrl + '\')">';
+  } else {
+    html += '<div class="empty" style="padding:20px;">インフォグラフィック画像はまだ登録されていません</div>';
+  }
+
+  if (info.reportText) {
+    html += '<div class="report-text" style="margin-top:16px;">' + esc(info.reportText) + '</div>';
+  }
+
+  html += '<div class="report-meta">生成日時: ' + esc(genDate) + '</div>'
+    + uploadBlockHtml
     + '</div>';
-  });
-  html += '</div>';
+
   body.innerHTML = html;
 }
+
+// アップロード欄の開閉
+function toggleInfographicUpload(btn) {
+  const frame = btn.nextElementSibling;
+  const showing = frame.style.display === 'block';
+  frame.style.display = showing ? 'none' : 'block';
+  btn.textContent = showing ? '📎 画像をアップロード／差し替える' : '📎 閉じる';
+}
+
+// ライトボックス（クリックで画像を拡大表示）
+let _infographicLightbox = null;
+function openInfographicLightbox(url) {
+  closeInfographicLightbox();
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox-overlay';
+  overlay.onclick = closeInfographicLightbox;
+  const img = document.createElement('img');
+  img.src = url;
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+  _infographicLightbox = overlay;
+}
+function closeInfographicLightbox() {
+  if (_infographicLightbox) {
+    _infographicLightbox.remove();
+    _infographicLightbox = null;
+  }
+}
+
+// アップロード用iframeから「保存できました」の通知を受け取ったら自動で再読み込み
+window.addEventListener('message', function(ev) {
+  if (ev && ev.data && ev.data.type === 'skgInfographicUploaded') {
+    loadAll(true);
+  }
+});
 
 // グラフ用のグローバル変数
 let trendChart = null;
 let cachedTrend = {};  // { dept: records[] }
-let cachedTotalMenteYears = null; // トータルメンテナンス課の全年度比較データ
 
 // 各部署のグラフデフォルト設定
 // key: 品目名||指標名（完全一致）/ filterFn: 複数品目を合算
@@ -995,7 +755,7 @@ const DEPT_DEFAULT_CHART = {
   "地域インフラ共創部2課":  { key:"RPS_合計||数量" },
   "感動デザイン課":         { key:"キング||数量" },
   "総合クリエイト課":       null,
-  "トータルメンテナンス課": { key:"車輌事故||件数" },
+  "トータルメンテナンス課": null,
   "Re\"バース仙台港":       { label:"全設備 数量合計", filterFn: function(r){ return r.metric==="数量"; } },
   "Re\"バース仙台岩切":     { key:"段ボール||数量" },
   "Re\"バース仙台扇町":     { key:"古紙合計||数量" },
@@ -1007,7 +767,7 @@ const DEPT_DEFAULT_METRIC = {
   "地域インフラ共創部2課":  "数量",
   "感動デザイン課":         "数量",
   "総合クリエイト課":       null,
-  "トータルメンテナンス課": "件数",
+  "トータルメンテナンス課": null,
   "Re\"バース仙台港":       "数量",
   "Re\"バース仙台岩切":     "数量",
   "Re\"バース仙台扇町":     "数量",
@@ -1035,23 +795,12 @@ async function onDeptChange() {
   if (!cachedTrend[dept]) {
     document.getElementById('chart-status').textContent = '月次データ取得中...';
     try {
-      const url = withKey(GAS_URL + '?type=trend_flat&dept=' + encodeURIComponent(dept));
+      const url = GAS_URL + '?type=trend_flat&dept=' + encodeURIComponent(dept);
       const data = await fetchJSONP(url);
       cachedTrend[dept] = data.trend || [];
     } catch(err) {
       document.getElementById('chart-status').textContent = '取得失敗: ' + err.message;
       return;
-    }
-  }
-
-  // トータルメンテナンス課：全年度比較用データも取得（初回のみ）
-  if (dept === "トータルメンテナンス課" && !cachedTotalMenteYears) {
-    try {
-      const url2 = withKey(GAS_URL + '?type=totalmente_years');
-      const data2 = await fetchJSONP(url2);
-      cachedTotalMenteYears = data2.categories || [];
-    } catch(err) {
-      cachedTotalMenteYears = [];
     }
   }
 
@@ -1070,14 +819,6 @@ async function onDeptChange() {
     const parts = k.split('||');
     return '<option value="' + esc(k) + '">' + parts[0] + '（' + parts[1] + '）</option>';
   }).join('');
-
-  // トータルメンテナンス課：全年度比較の選択肢を追加
-  if (dept === "トータルメンテナンス課" && cachedTotalMenteYears && cachedTotalMenteYears.length) {
-    optionsHtml += cachedTotalMenteYears.map(function(c) {
-      return '<option value="ALLYEARS::' + esc(c.category) + '">' + esc(c.category) + '（全年度比較）</option>';
-    }).join('');
-  }
-
   itemSel.innerHTML = optionsHtml;
 
   // デフォルト品目を自動選択
@@ -1163,16 +904,7 @@ function syncItemTabsActive() {
 function renderChart() {
   const dept    = document.getElementById('dept-select').value;
   const itemKey = document.getElementById('item-select').value;
-  if (!dept || !itemKey) return;
-
-  // トータルメンテナンス課：全年度比較モード
-  if (itemKey.indexOf('ALLYEARS::') === 0) {
-    const category = itemKey.substring('ALLYEARS::'.length);
-    renderAllYearsChart(dept, category);
-    return;
-  }
-
-  if (!cachedTrend[dept]) return;
+  if (!dept || !itemKey || !cachedTrend[dept]) return;
 
   const FY = 2026;
   const MONTHS = ["04","05","06","07","08","09","10","11","12","01","02","03"];
@@ -1252,11 +984,11 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
         {
           label: '実績',
           data: actuals,
-          borderColor: '#C98A2B',
-          backgroundColor: 'rgba(201,138,43,0.10)',
+          borderColor: '#E67E22',
+          backgroundColor: 'rgba(230,126,34,0.08)',
           borderWidth: 2.5,
           borderDash: [],
-          pointBackgroundColor: '#C98A2B',
+          pointBackgroundColor: '#E67E22',
           pointRadius: 4,
           tension: 0.3,
           fill: true,
@@ -1282,66 +1014,6 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
         },
         y: {
           beginAtZero: false,
-          ticks: { callback: function(v){ return fmtNum(v); } }
-        }
-      }
-    }
-  });
-}
-
-// ============================================================
-// トータルメンテナンス課：事故件数の全年度比較チャート
-// 年度ごとに1本の折れ線として、全年度を同時に表示する
-// （凡例クリックで特定の年度だけ表示/非表示を切り替え可能＝過去年度への「切替」も兼ねる）
-// ============================================================
-const ALLYEARS_COLORS = [
-  '#C98A2B', '#3E7C6F', '#B3492E', '#6B5B95',
-  '#1D4B3E', '#A67C52', '#5C7A99', '#8A8377'
-];
-
-function renderAllYearsChart(dept, category) {
-  document.getElementById('chart-title').textContent = dept + ' ｜ ' + category + '（全年度比較） 月次推移';
-  document.getElementById('chart-status').textContent = '';
-
-  const MONTHS = ["4月","5月","6月","7月","8月","9月","10月","11月","12月","1月","2月","3月"];
-  const found = (cachedTotalMenteYears || []).find(function(c){ return c.category === category; });
-  const years = found ? found.years : [];
-
-  const datasets = years.map(function(y, i) {
-    const color = ALLYEARS_COLORS[i % ALLYEARS_COLORS.length];
-    return {
-      label: y.year,
-      data: y.monthly,
-      borderColor: color,
-      backgroundColor: 'transparent',
-      borderWidth: y.year.indexOf('令和8') === 0 ? 3 : 1.5,
-      pointRadius: 3,
-      tension: 0.3,
-      spanGaps: true
-    };
-  });
-
-  const ctx = document.getElementById('trend-chart').getContext('2d');
-  if (trendChart) trendChart.destroy();
-  trendChart = new Chart(ctx, {
-    type: 'line',
-    data: { labels: MONTHS, datasets: datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: { padding: { bottom: 4, right: 8 } },
-      plugins: {
-        legend: { position: 'top' },
-        tooltip: {
-          callbacks: {
-            label: function(ctx){ return ctx.dataset.label + ': ' + fmtNum(ctx.raw) + '件'; }
-          }
-        }
-      },
-      scales: {
-        x: { ticks: { maxRotation: 0, autoSkipPadding: 8 } },
-        y: {
-          beginAtZero: true,
           ticks: { callback: function(v){ return fmtNum(v); } }
         }
       }
@@ -1426,7 +1098,7 @@ function makeCard(g) {
     else if (rate >= 80) badgeCls = 'rate-near';
     else badgeCls = 'rate-low';
   }
-  return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#FAF8F4;margin-bottom:8px">'
+  return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#F8FAFC;margin-bottom:8px">'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">' + g.item + '（' + g.metric + '）</div>'
     + '<div style="display:flex;justify-content:space-between;align-items:center">'
     + '<div>'
@@ -1462,7 +1134,7 @@ function setStatus(msg, loading) {
 
 function fmtNum(n) {
   if (n === null || n === undefined || n === '') return '-';
-  return Math.round(Number(n)).toLocaleString('ja-JP');
+  return Number(n).toLocaleString('ja-JP');
 }
 
 function esc(str) {
