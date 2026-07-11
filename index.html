@@ -512,6 +512,8 @@ let cachedSummary = [];
 let cachedInfographic = null; // { ym, imageFileId, reportText, generatedAt } または null
 let cachedShinki = [];
 let cachedActions = [];
+let shinkiActionsLoaded = false; // 月に依存しないため、初回以降は再取得しない
+let cachedAllFlatByYm = {}; // { ym: {perf, hr, ym} } 月ごとの取得結果を使い回すためのキャッシュ
 
 // ============================================================
 // JSONP fetch（CORSを回避）
@@ -615,17 +617,28 @@ async function loadAll(nocache) {
 
   setStatus(nocache ? '最新データを取得中...' : '読み込み中...', true);
 
+  // 月ごとのデータ取得（既に取得済みの月はキャッシュを使い回す。再読み込み時は強制的に取り直す）
+  async function fetchAllFlatCached(targetYm) {
+    if (!nocache && cachedAllFlatByYm[targetYm]) return cachedAllFlatByYm[targetYm];
+    const url = withKey(GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(targetYm));
+    const res = await fetchJSONP(url);
+    cachedAllFlatByYm[targetYm] = res;
+    return res;
+  }
+
   // 依存関係のない通信をまとめて同時に開始（読み込み高速化）
-  const flatUrl        = withKey(GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(ym));
-  const prevFlatUrl     = withKey(GAS_URL + '?type=all_flat&ym=' + encodeURIComponent(prevYm));
-  const infographicUrl  = withKey(GAS_URL + '?type=infographic&ym=' + encodeURIComponent(ym));
-  const shinkiUrl       = withKey(GAS_URL + '?type=shinki_anken');
-  const actionsUrl       = withKey(GAS_URL + '?type=actions');
-  const flatPromise        = fetchJSONP(flatUrl);
-  const prevFlatPromise    = fetchJSONP(prevFlatUrl).catch(function() { return null; });
+  const infographicUrl = withKey(GAS_URL + '?type=infographic&ym=' + encodeURIComponent(ym));
+  const flatPromise        = fetchAllFlatCached(ym);
+  const prevFlatPromise    = fetchAllFlatCached(prevYm).catch(function() { return null; });
   const infographicPromise = fetchJSONP(infographicUrl).catch(function() { return null; });
-  const shinkiPromise      = fetchJSONP(shinkiUrl).catch(function() { return null; });
-  const actionsPromise     = fetchJSONP(actionsUrl).catch(function() { return null; });
+  // 新規案件・次回アクションは月に依存しないため、初回（または再読み込み時）のみ取得する
+  const needShinkiActions = nocache || !shinkiActionsLoaded;
+  const shinkiPromise  = needShinkiActions
+    ? fetchJSONP(withKey(GAS_URL + '?type=shinki_anken')).catch(function() { return null; })
+    : Promise.resolve(null);
+  const actionsPromise = needShinkiActions
+    ? fetchJSONP(withKey(GAS_URL + '?type=actions')).catch(function() { return null; })
+    : Promise.resolve(null);
 
   let data = null;
   try {
@@ -651,7 +664,9 @@ async function loadAll(nocache) {
   });
 
   const actionsData = await actionsPromise;
-  cachedActions = (actionsData && actionsData.list) ? actionsData.list : [];
+  if (needShinkiActions) {
+    cachedActions = (actionsData && actionsData.list) ? actionsData.list : [];
+  }
 
   if (data) {
     renderSummary(DEPTS);
@@ -665,7 +680,10 @@ async function loadAll(nocache) {
   renderInfographicReport();
 
   const shinkiData = await shinkiPromise;
-  cachedShinki = (shinkiData && shinkiData.list) ? shinkiData.list : [];
+  if (needShinkiActions) {
+    cachedShinki = (shinkiData && shinkiData.list) ? shinkiData.list : [];
+    shinkiActionsLoaded = true;
+  }
   populateShinkiYmSelect();
   populateShinkiResultSelect();
   renderShinkiAnken();
