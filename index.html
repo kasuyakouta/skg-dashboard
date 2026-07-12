@@ -515,6 +515,7 @@ let cachedShinki = [];
 let cachedActions = [];
 let shinkiActionsLoaded = false; // 月に依存しないため、初回以降は再取得しない
 let cachedAllFlatByYm = {}; // { ym: {perf, hr, ym} } 月ごとの取得結果を使い回すためのキャッシュ
+let perfDeptDefaultApplied = false; // 部署別実績タブの初期部署自動選択（ページ初回表示時のみ適用）
 
 // ============================================================
 // JSONP fetch（CORSを回避）
@@ -697,8 +698,21 @@ async function loadAll(nocache) {
     opt.value = d; opt.textContent = d;
     deptSel.appendChild(opt);
   });
+
+  // 部署別実績タブの初期表示部署（ページ初回ロード時のみ自動選択する）
+  const DEFAULT_PERF_DEPT = '地域インフラ共創部1課';
+  let deptAutoSelected = false;
   if (prevDept && DEPTS.includes(prevDept)) {
     deptSel.value = prevDept;
+  } else if (!perfDeptDefaultApplied && DEPTS.includes(DEFAULT_PERF_DEPT)) {
+    deptSel.value = DEFAULT_PERF_DEPT;
+    deptAutoSelected = true;
+  }
+  perfDeptDefaultApplied = true;
+
+  // 初回のみ：初期部署のグラフ・品目（デフォルトは「全品目 粗利益合計」）を自動描画
+  if (deptAutoSelected) {
+    await onDeptChange();
   }
 
   document.getElementById('header-ym').textContent =
