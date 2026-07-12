@@ -922,7 +922,7 @@ function renderInfographicReport() {
   let html = '<div class="card infographic-card">';
 
   if (thumbUrl) {
-    html += '<img src="' + esc(thumbUrl) + '" class="infographic-thumb" onclick="openLightbox(\'' + esc(fullUrl) + '\')" loading="lazy">';
+    html += '<img id="infographic-img" src="' + esc(thumbUrl) + '" class="infographic-thumb" onclick="openLightbox(\'' + esc(fullUrl) + '\')" loading="lazy">';
   } else {
     html += '<div class="empty" style="padding:24px 0;">この月のインフォグラフィックはまだ登録されていません</div>';
   }
@@ -941,6 +941,31 @@ function renderInfographicReport() {
 
   html += '</div>';
   body.innerHTML = html;
+
+  adjustInfographicImageHeight();
+}
+
+// ヘッダー・年月コントロール・タブなど「画像より上にある要素」の実際の高さを
+// 差し引いた上で、画像がその場で全体表示されるよう高さの上限を動的に設定する
+function adjustInfographicImageHeight() {
+  const img = document.getElementById('infographic-img');
+  if (!img) return;
+
+  function apply() {
+    const top = img.getBoundingClientRect().top;
+    const bottomMargin = 24; // 画面下端の余白
+    const available = window.innerHeight - top - bottomMargin;
+    img.style.maxHeight = Math.max(available, 200) + 'px'; // 極端に小さくなりすぎないよう下限を設ける
+  }
+
+  if (img.complete) {
+    apply();
+  } else {
+    img.addEventListener('load', apply, { once: true });
+  }
+  window.removeEventListener('resize', window._infographicResizeHandler || function(){});
+  window._infographicResizeHandler = apply;
+  window.addEventListener('resize', apply);
 }
 
 // ============================================================
