@@ -310,6 +310,7 @@
     <div class="tab" onclick="showTab('tab-hr', this)">👥 人事コメント</div>
     <div class="tab" onclick="showTab('tab-perf', this)">📈 部署別実績</div>
     <div class="tab" onclick="showTab('tab-shinki', this)">🏢 新規案件</div>
+    <div class="tab" onclick="showTab('tab-juchu', this)">🏆 受注案件</div>
   </div>
 
   <!-- サマリータブ -->
@@ -376,6 +377,23 @@
       </select>
     </div>
     <div id="shinki-body"><div class="empty">データがありません</div></div>
+  </div>
+
+  <!-- 受注案件タブ -->
+  <div id="tab-juchu" class="tab-content">
+    <div class="card" style="margin-bottom:16px;">
+      <h2>年度累計 受注ランキング（担当者別）</h2>
+      <div id="juchu-ranking-body"><div class="empty">データがありません</div></div>
+    </div>
+
+    <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;gap:12px;">
+      <label>対象月</label>
+      <select id="juchu-ym-select" onchange="onJuchuMonthChange()">
+        <option value="">選択してください</option>
+      </select>
+    </div>
+
+    <div id="juchu-monthly-body"><div class="empty">月を選択すると、その月の案件情報が表示されます</div></div>
   </div>
 
   <!-- AIレポートタブ -->
@@ -512,6 +530,9 @@ let cachedHr = [];
 let cachedSummary = [];
 let cachedInfographic = null; // { ym, imageFileId, reportText, generatedAt } または null
 let cachedShinki = [];
+let cachedJuchuRanking = [];
+let juchuRankingLoaded = false;
+let cachedJuchuMonthlyByYm = {};
 let cachedActions = [];
 let shinkiActionsLoaded = false; // 月に依存しないため、初回以降は再取得しない
 let cachedAllFlatByYm = {}; // { ym: {perf, hr, ym} } 月ごとの取得結果を使い回すためのキャッシュ
@@ -641,6 +662,11 @@ async function loadAll(nocache) {
   const actionsPromise = needShinkiActions
     ? fetchJSONP(withKey(GAS_URL + '?type=actions')).catch(function() { return null; })
     : Promise.resolve(null);
+  // 受注案件ランキングは年度累計のため、月に依存せず初回（または再読み込み時）のみ取得する
+  const needJuchuRanking = nocache || !juchuRankingLoaded;
+  const juchuRankingPromise = needJuchuRanking
+    ? fetchJSONP(withKey(GAS_URL + '?type=juchu_ranking')).catch(function() { return null; })
+    : Promise.resolve(null);
 
   let data = null;
   try {
@@ -689,6 +715,14 @@ async function loadAll(nocache) {
   populateShinkiYmSelect();
   populateShinkiResultSelect();
   renderShinkiAnken();
+
+  const juchuRankingData = await juchuRankingPromise;
+  if (needJuchuRanking) {
+    cachedJuchuRanking = (juchuRankingData && juchuRankingData.ranking) ? juchuRankingData.ranking : [];
+    juchuRankingLoaded = true;
+  }
+  populateJuchuYmSelect();
+  renderJuchuRanking();
 
   const deptSel = document.getElementById('dept-select');
   const prevDept = deptSel.value;
@@ -1062,6 +1096,127 @@ function renderShinkiAnken() {
     + '</div>';
   });
   html += '</div>';
+  body.innerHTML = html;
+}
+
+// ============================================================
+// 受注案件タブ（年度累計ランキング・月別の大型案件情報／主な受注案件）
+// ============================================================
+function populateJuchuYmSelect() {
+  const sel = document.getElementById('juchu-ym-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">選択してください</option>';
+  FALLBACK_MONTHS.forEach(function(ym) {
+    const opt = document.createElement('option');
+    opt.value = ym; opt.textContent = ym;
+    sel.appendChild(opt);
+  });
+  if (prev && FALLBACK_MONTHS.includes(prev)) {
+    sel.value = prev;
+  }
+}
+
+function renderJuchuRanking() {
+  const body = document.getElementById('juchu-ranking-body');
+  if (!cachedJuchuRanking.length) {
+    body.innerHTML = '<div class="empty">データがありません</div>';
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+  const top3 = cachedJuchuRanking.slice(0, 3);
+  const rest = cachedJuchuRanking.slice(3);
+
+  let html = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">';
+  top3.forEach(function(r, i) {
+    html += '<div class="kpi-card" style="flex:1;min-width:160px;text-align:center;">'
+      + '<div style="font-size:28px;">' + medals[i] + '</div>'
+      + '<div style="font-size:15px;font-weight:600;margin-top:4px;">' + esc(r.person) + '</div>'
+      + '<div style="font-size:20px;font-weight:700;color:var(--primary);margin-top:2px;">' + fmtNum(r.total) + '円</div>'
+      + '</div>';
+  });
+  html += '</div>';
+
+  if (rest.length) {
+    html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+    rest.forEach(function(r, i) {
+      html += '<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:8px;">'
+        + '<span>' + (i + 4) + '位　' + esc(r.person) + '</span>'
+        + '<span style="font-weight:600;">' + fmtNum(r.total) + '円</span>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  body.innerHTML = html;
+}
+
+async function onJuchuMonthChange() {
+  const ym = document.getElementById('juchu-ym-select').value;
+  const body = document.getElementById('juchu-monthly-body');
+  if (!ym) {
+    body.innerHTML = '<div class="empty">月を選択すると、その月の案件情報が表示されます</div>';
+    return;
+  }
+
+  body.innerHTML = '<div class="empty">読み込み中...</div>';
+  try {
+    if (!cachedJuchuMonthlyByYm[ym]) {
+      const url = withKey(GAS_URL + '?type=juchu_monthly&ym=' + encodeURIComponent(ym));
+      cachedJuchuMonthlyByYm[ym] = await fetchJSONP(url);
+    }
+    renderJuchuMonthly(cachedJuchuMonthlyByYm[ym]);
+  } catch (err) {
+    body.innerHTML = '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+  }
+}
+
+function renderJuchuMonthly(data) {
+  const body = document.getElementById('juchu-monthly-body');
+  const large = (data && data.large) ? data.large : [];
+  const juchu = (data && data.juchu) ? data.juchu : [];
+
+  if (!large.length && !juchu.length) {
+    body.innerHTML = '<div class="empty">この月のデータはまだ登録されていません</div>';
+    return;
+  }
+
+  let html = '';
+
+  if (large.length) {
+    html += '<div class="card" style="margin-bottom:16px;"><h2>大型案件情報</h2><div style="display:flex;flex-direction:column;gap:8px;">';
+    large.forEach(function(r) {
+      html += '<div style="padding:10px 12px;background:var(--bg);border-radius:8px;">'
+        + '<div style="font-weight:600;">' + esc(r.name) + '</div>'
+        + '<div style="color:var(--muted);font-size:13px;margin-top:2px;">' + esc(r.content) + '</div>'
+        + '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  if (juchu.length) {
+    let total = 0;
+    juchu.forEach(function(r) { total += r.amount; });
+
+    html += '<div class="card">'
+      + '<h2>主な受注案件<span style="float:right;font-size:14px;color:var(--muted);">合計 ' + fmtNum(total) + '円</span></h2>'
+      + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">'
+      + '<thead><tr style="border-bottom:1px solid var(--border);text-align:left;">'
+      + '<th style="padding:6px 8px;">物件名</th><th style="padding:6px 8px;">品目</th>'
+      + '<th style="padding:6px 8px;">対応日</th><th style="padding:6px 8px;text-align:right;">金額</th>'
+      + '<th style="padding:6px 8px;">担当者</th></tr></thead><tbody>';
+    juchu.forEach(function(r) {
+      html += '<tr style="border-bottom:1px solid var(--border);">'
+        + '<td style="padding:6px 8px;">' + esc(r.name) + '</td>'
+        + '<td style="padding:6px 8px;">' + esc(r.item) + '</td>'
+        + '<td style="padding:6px 8px;">' + esc(r.date) + '</td>'
+        + '<td style="padding:6px 8px;text-align:right;">' + fmtNum(r.amount) + '円</td>'
+        + '<td style="padding:6px 8px;">' + esc(r.person) + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+  }
+
   body.innerHTML = html;
 }
 
