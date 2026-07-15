@@ -381,19 +381,19 @@
 
   <!-- 受注案件タブ -->
   <div id="tab-juchu" class="tab-content">
-    <div class="card" style="margin-bottom:16px;">
+    <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;gap:12px;">
+      <label>対象月</label>
+      <select id="juchu-ym-select" onchange="onJuchuMonthChange()">
+        <option value="">選択してください（年度累計ランキングを表示）</option>
+      </select>
+    </div>
+
+    <div id="juchu-ranking-section" class="card" style="margin-bottom:16px;">
       <h2>年度累計 受注ランキング（担当者別）</h2>
       <div id="juchu-ranking-body"><div class="empty">データがありません</div></div>
     </div>
 
-    <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;gap:12px;">
-      <label>対象月</label>
-      <select id="juchu-ym-select" onchange="onJuchuMonthChange()">
-        <option value="">選択してください</option>
-      </select>
-    </div>
-
-    <div id="juchu-monthly-body"><div class="empty">月を選択すると、その月の案件情報が表示されます</div></div>
+    <div id="juchu-monthly-body" style="display:none;"></div>
   </div>
 
   <!-- AIレポートタブ -->
@@ -1153,12 +1153,18 @@ function renderJuchuRanking() {
 
 async function onJuchuMonthChange() {
   const ym = document.getElementById('juchu-ym-select').value;
+  const rankingSection = document.getElementById('juchu-ranking-section');
   const body = document.getElementById('juchu-monthly-body');
+
   if (!ym) {
-    body.innerHTML = '<div class="empty">月を選択すると、その月の案件情報が表示されます</div>';
+    rankingSection.style.display = '';
+    body.style.display = 'none';
+    body.innerHTML = '';
     return;
   }
 
+  rankingSection.style.display = 'none';
+  body.style.display = '';
   body.innerHTML = '<div class="empty">読み込み中...</div>';
   try {
     if (!cachedJuchuMonthlyByYm[ym]) {
