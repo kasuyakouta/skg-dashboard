@@ -389,7 +389,7 @@
     </div>
 
     <div id="juchu-ranking-section" class="card" style="margin-bottom:16px;">
-      <h2>年度累計 受注ランキング（担当者別）</h2>
+      <h2>年度累計 受注ランキング（担当者別）<span id="juchu-ranking-total" style="float:right;font-size:14px;color:var(--muted);"></span></h2>
       <div id="juchu-ranking-body"><div class="empty">データがありません</div></div>
     </div>
 
@@ -1118,10 +1118,16 @@ function populateJuchuYmSelect() {
 
 function renderJuchuRanking() {
   const body = document.getElementById('juchu-ranking-body');
+  const totalEl = document.getElementById('juchu-ranking-total');
+
   if (!cachedJuchuRanking.length) {
     body.innerHTML = '<div class="empty">データがありません</div>';
+    if (totalEl) totalEl.textContent = '';
     return;
   }
+
+  const grandTotal = cachedJuchuRanking.reduce(function(sum, r) { return sum + r.total; }, 0);
+  if (totalEl) totalEl.textContent = '年度累計合計　' + fmtNum(grandTotal) + '円';
 
   const medals = ['🥇', '🥈', '🥉'];
   const top3 = cachedJuchuRanking.slice(0, 3);
