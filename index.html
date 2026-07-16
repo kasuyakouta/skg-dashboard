@@ -549,6 +549,8 @@ let cachedJuchuRanking = [];
 let juchuRankingLoaded = false;
 let cachedJuchuMonthlyByYm = {};
 let cachedKengakuByYm = {};
+let cachedKengakuMonths = [];
+let kengakuMonthsLoaded = false;
 let cachedActions = [];
 let shinkiActionsLoaded = false; // 月に依存しないため、初回以降は再取得しない
 let cachedAllFlatByYm = {}; // { ym: {perf, hr, ym} } 月ごとの取得結果を使い回すためのキャッシュ
@@ -683,6 +685,11 @@ async function loadAll(nocache) {
   const juchuRankingPromise = needJuchuRanking
     ? fetchJSONP(withKey(GAS_URL + '?type=juchu_ranking')).catch(function() { return null; })
     : Promise.resolve(null);
+  // 施設見学の月一覧も、シートの入力状況に応じて変わるだけなので、初回（または再読み込み時）のみ取得する
+  const needKengakuMonths = nocache || !kengakuMonthsLoaded;
+  const kengakuMonthsPromise = needKengakuMonths
+    ? fetchJSONP(withKey(GAS_URL + '?type=kengaku_months')).catch(function() { return null; })
+    : Promise.resolve(null);
 
   let data = null;
   try {
@@ -739,6 +746,12 @@ async function loadAll(nocache) {
   }
   populateJuchuYmSelect();
   renderJuchuRanking();
+
+  const kengakuMonthsData = await kengakuMonthsPromise;
+  if (needKengakuMonths) {
+    cachedKengakuMonths = (kengakuMonthsData && kengakuMonthsData.months) ? kengakuMonthsData.months : [];
+    kengakuMonthsLoaded = true;
+  }
   populateKengakuYmSelect();
 
   const deptSel = document.getElementById('dept-select');
@@ -1306,19 +1319,22 @@ function renderJuchuMonthly(data) {
 function populateKengakuYmSelect() {
   const sel = document.getElementById('kengaku-ym-select');
   const prev = sel.value;
+  // 新しい月から順に表示する
+  const months = [...cachedKengakuMonths].sort().reverse();
+
   sel.innerHTML = '<option value="">選択してください</option>';
-  FALLBACK_MONTHS.forEach(function(ym) {
+  months.forEach(function(ym) {
     const opt = document.createElement('option');
     opt.value = ym; opt.textContent = ym;
     sel.appendChild(opt);
   });
 
-  if (prev && FALLBACK_MONTHS.includes(prev)) {
+  if (prev && months.includes(prev)) {
     sel.value = prev;
   } else {
-    // 初回表示時は、画面上部で選択中の年月と同じ月を自動選択する
+    // 初回表示時は、画面上部で選択中の年月と同じ月にデータがあれば自動選択する
     const currentYm = document.getElementById('ym-select').value;
-    if (currentYm && FALLBACK_MONTHS.includes(currentYm)) {
+    if (currentYm && months.includes(currentYm)) {
       sel.value = currentYm;
     }
   }
