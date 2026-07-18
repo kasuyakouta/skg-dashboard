@@ -309,7 +309,7 @@
     <div class="tab" onclick="showTab('tab-report', this)">📝 AIレポート</div>
     <div class="tab" onclick="showTab('tab-hr', this)">👥 人事コメント</div>
     <div class="tab" onclick="showTab('tab-perf', this)">📈 部署別実績</div>
-    <div class="tab" onclick="showTab('tab-shinki', this)">🏢 新規案件</div>
+    <div class="tab" onclick="openShinkiTab(this)">🏢 新規案件</div>
     <div class="tab" onclick="openJuchuTab(this)">🏆 受注案件</div>
     <div class="tab" onclick="openKengakuTab(this)">🔍 施設見学</div>
     <div class="tab" onclick="openFuelTab(this)">⛽ 燃料</div>
@@ -578,7 +578,8 @@ let fuelChart = null;
 let currentFuelView = 'price';
 let currentFuelHinmoku = '軽油';
 let cachedActions = [];
-let shinkiActionsLoaded = false; // 月に依存しないため、初回以降は再取得しない
+let actionsLoaded = false; // 次回アクションは月に依存しないため、初回以降は再取得しない
+let shinkiLoaded = false; // 新規案件は新規案件タブを開いた時だけ読み込む（遅延読み込み）
 let cachedAllFlatByYm = {}; // { ym: {perf, hr, ym} } 月ごとの取得結果を使い回すためのキャッシュ
 let perfDeptDefaultApplied = false; // 部署別実績タブの初期部署自動選択（ページ初回表示時のみ適用）
 
@@ -698,17 +699,14 @@ async function loadAll(nocache) {
   const flatPromise        = fetchAllFlatCached(ym);
   const prevFlatPromise    = fetchAllFlatCached(prevYm).catch(function() { return null; });
   const infographicPromise = fetchJSONP(infographicUrl).catch(function() { return null; });
-  // 新規案件・次回アクションは月に依存しないため、初回（または再読み込み時）のみ取得する
-  const needShinkiActions = nocache || !shinkiActionsLoaded;
-  const shinkiPromise  = needShinkiActions
-    ? fetchJSONP(withKey(GAS_URL + '?type=shinki_anken')).catch(function() { return null; })
-    : Promise.resolve(null);
-  const actionsPromise = needShinkiActions
+  // 次回アクションは全部署サマリーの表示に使うため、今まで通り即時取得する
+  const needActions = nocache || !actionsLoaded;
+  const actionsPromise = needActions
     ? fetchJSONP(withKey(GAS_URL + '?type=actions')).catch(function() { return null; })
     : Promise.resolve(null);
-  // 受注案件ランキング・施設見学の月一覧・燃料データは、いずれもデータ量や通信本数の
+  // 新規案件・受注案件ランキング・施設見学の月一覧・燃料データは、いずれもデータ量や通信本数の
   // 都合上、それぞれのタブを開いた時だけ読み込む（遅延読み込み）ため、ここでは取得しない
-  // （openJuchuTab() / openKengakuTab() / openFuelTab() を参照）
+  // （openShinkiTab() / openJuchuTab() / openKengakuTab() / openFuelTab() を参照）
 
   let data = null;
   try {
@@ -734,8 +732,9 @@ async function loadAll(nocache) {
   });
 
   const actionsData = await actionsPromise;
-  if (needShinkiActions) {
+  if (needActions) {
     cachedActions = (actionsData && actionsData.list) ? actionsData.list : [];
+    actionsLoaded = true;
   }
 
   if (data) {
@@ -748,15 +747,6 @@ async function loadAll(nocache) {
   cachedInfographic = (infographicData && (infographicData.imageFileId || infographicData.reportText))
     ? infographicData : null;
   renderInfographicReport();
-
-  const shinkiData = await shinkiPromise;
-  if (needShinkiActions) {
-    cachedShinki = (shinkiData && shinkiData.list) ? shinkiData.list : [];
-    shinkiActionsLoaded = true;
-  }
-  populateShinkiYmSelect();
-  populateShinkiResultSelect();
-  renderShinkiAnken();
 
   const deptSel = document.getElementById('dept-select');
   const prevDept = deptSel.value;
@@ -1053,6 +1043,33 @@ function adjustInfographicImageHeight() {
 // ============================================================
 // 新規案件（感動デザイン課）：年月セレクトの作成
 // ============================================================
+
+// 新規案件タブは、タブを開いた時だけ読み込む（遅延読み込み）
+async function openShinkiTab(el) {
+  showTab('tab-shinki', el);
+
+  if (shinkiLoaded) {
+    populateShinkiYmSelect();
+    populateShinkiResultSelect();
+    renderShinkiAnken();
+    return;
+  }
+
+  document.getElementById('shinki-body').innerHTML = '<div class="empty">読み込み中...</div>';
+  try {
+    const url = withKey(GAS_URL + '?type=shinki_anken');
+    const data = await fetchJSONP(url);
+    cachedShinki = (data && data.list) ? data.list : [];
+    shinkiLoaded = true;
+    populateShinkiYmSelect();
+    populateShinkiResultSelect();
+    renderShinkiAnken();
+  } catch (err) {
+    document.getElementById('shinki-body').innerHTML =
+      '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+  }
+}
+
 function populateShinkiYmSelect() {
   const sel = document.getElementById('shinki-ym-select');
   const current = sel.value;
