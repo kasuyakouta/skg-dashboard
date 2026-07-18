@@ -312,7 +312,7 @@
     <div class="tab" onclick="showTab('tab-shinki', this)">🏢 新規案件</div>
     <div class="tab" onclick="showTab('tab-juchu', this)">🏆 受注案件</div>
     <div class="tab" onclick="showTab('tab-kengaku', this)">🔍 施設見学</div>
-    <div class="tab" onclick="showTab('tab-fuel', this)">⛽ 燃料</div>
+    <div class="tab" onclick="openFuelTab(this)">⛽ 燃料</div>
   </div>
 
   <!-- サマリータブ -->
@@ -716,11 +716,8 @@ async function loadAll(nocache) {
   const kengakuMonthsPromise = needKengakuMonths
     ? fetchJSONP(withKey(GAS_URL + '?type=kengaku_months')).catch(function() { return null; })
     : Promise.resolve(null);
-  // 燃料データも量が多いだけで月次に依存しないので、初回（または再読み込み時）のみ取得する
-  const needFuelData = nocache || !fuelDataLoaded;
-  const fuelDataPromise = needFuelData
-    ? fetchJSONP(withKey(GAS_URL + '?type=fuel_all')).catch(function() { return null; })
-    : Promise.resolve(null);
+  // 燃料データはデータ量が多く、燃料タブを開いた時だけ読み込む（遅延読み込み）ため、
+  // ここでは取得しない（openFuelTab()を参照）
 
   let data = null;
   try {
@@ -784,13 +781,6 @@ async function loadAll(nocache) {
     kengakuMonthsLoaded = true;
   }
   populateKengakuYmSelect();
-
-  const fuelData = await fuelDataPromise;
-  if (needFuelData) {
-    cachedFuelRows = (fuelData && fuelData.rows) ? fuelData.rows : [];
-    fuelDataLoaded = true;
-  }
-  renderFuelView();
 
   const deptSel = document.getElementById('dept-select');
   const prevDept = deptSel.value;
@@ -1432,6 +1422,27 @@ function renderKengaku(data) {
 // ============================================================
 // 燃料タブ（単価比較・宇佐美 vs 県相場・使用量の推移）
 // ============================================================
+// 燃料タブは他のタブに比べてデータ量が多いため、タブを開いた時だけ読み込む（遅延読み込み）
+async function openFuelTab(el) {
+  showTab('tab-fuel', el);
+
+  if (fuelDataLoaded) {
+    renderFuelView();
+    return;
+  }
+
+  document.getElementById('fuel-chart-title').textContent = '読み込み中...';
+  try {
+    const url = withKey(GAS_URL + '?type=fuel_all');
+    const data = await fetchJSONP(url);
+    cachedFuelRows = (data && data.rows) ? data.rows : [];
+    fuelDataLoaded = true;
+    renderFuelView();
+  } catch (err) {
+    document.getElementById('fuel-chart-title').textContent = 'データ取得に失敗しました';
+  }
+}
+
 function switchFuelView(view) {
   currentFuelView = view;
   document.querySelectorAll('#tab-fuel .item-tab').forEach(function(el) {
