@@ -310,8 +310,8 @@
     <div class="tab" onclick="showTab('tab-hr', this)">👥 人事コメント</div>
     <div class="tab" onclick="showTab('tab-perf', this)">📈 部署別実績</div>
     <div class="tab" onclick="showTab('tab-shinki', this)">🏢 新規案件</div>
-    <div class="tab" onclick="showTab('tab-juchu', this)">🏆 受注案件</div>
-    <div class="tab" onclick="showTab('tab-kengaku', this)">🔍 施設見学</div>
+    <div class="tab" onclick="openJuchuTab(this)">🏆 受注案件</div>
+    <div class="tab" onclick="openKengakuTab(this)">🔍 施設見学</div>
     <div class="tab" onclick="openFuelTab(this)">⛽ 燃料</div>
   </div>
 
@@ -706,18 +706,9 @@ async function loadAll(nocache) {
   const actionsPromise = needShinkiActions
     ? fetchJSONP(withKey(GAS_URL + '?type=actions')).catch(function() { return null; })
     : Promise.resolve(null);
-  // 受注案件ランキングは年度累計のため、月に依存せず初回（または再読み込み時）のみ取得する
-  const needJuchuRanking = nocache || !juchuRankingLoaded;
-  const juchuRankingPromise = needJuchuRanking
-    ? fetchJSONP(withKey(GAS_URL + '?type=juchu_ranking')).catch(function() { return null; })
-    : Promise.resolve(null);
-  // 施設見学の月一覧も、シートの入力状況に応じて変わるだけなので、初回（または再読み込み時）のみ取得する
-  const needKengakuMonths = nocache || !kengakuMonthsLoaded;
-  const kengakuMonthsPromise = needKengakuMonths
-    ? fetchJSONP(withKey(GAS_URL + '?type=kengaku_months')).catch(function() { return null; })
-    : Promise.resolve(null);
-  // 燃料データはデータ量が多く、燃料タブを開いた時だけ読み込む（遅延読み込み）ため、
-  // ここでは取得しない（openFuelTab()を参照）
+  // 受注案件ランキング・施設見学の月一覧・燃料データは、いずれもデータ量や通信本数の
+  // 都合上、それぞれのタブを開いた時だけ読み込む（遅延読み込み）ため、ここでは取得しない
+  // （openJuchuTab() / openKengakuTab() / openFuelTab() を参照）
 
   let data = null;
   try {
@@ -766,21 +757,6 @@ async function loadAll(nocache) {
   populateShinkiYmSelect();
   populateShinkiResultSelect();
   renderShinkiAnken();
-
-  const juchuRankingData = await juchuRankingPromise;
-  if (needJuchuRanking) {
-    cachedJuchuRanking = (juchuRankingData && juchuRankingData.ranking) ? juchuRankingData.ranking : [];
-    juchuRankingLoaded = true;
-  }
-  populateJuchuYmSelect();
-  renderJuchuRanking();
-
-  const kengakuMonthsData = await kengakuMonthsPromise;
-  if (needKengakuMonths) {
-    cachedKengakuMonths = (kengakuMonthsData && kengakuMonthsData.months) ? kengakuMonthsData.months : [];
-    kengakuMonthsLoaded = true;
-  }
-  populateKengakuYmSelect();
 
   const deptSel = document.getElementById('dept-select');
   const prevDept = deptSel.value;
@@ -1160,6 +1136,31 @@ function renderShinkiAnken() {
 // ============================================================
 // 受注案件タブ（年度累計ランキング・月別の大型案件情報／主な受注案件）
 // ============================================================
+
+// 受注案件タブは他のタブより通信本数を増やすため、タブを開いた時だけ読み込む（遅延読み込み）
+async function openJuchuTab(el) {
+  showTab('tab-juchu', el);
+
+  if (juchuRankingLoaded) {
+    populateJuchuYmSelect();
+    renderJuchuRanking();
+    return;
+  }
+
+  document.getElementById('juchu-ranking-body').innerHTML = '<div class="empty">読み込み中...</div>';
+  try {
+    const url = withKey(GAS_URL + '?type=juchu_ranking');
+    const data = await fetchJSONP(url);
+    cachedJuchuRanking = (data && data.ranking) ? data.ranking : [];
+    juchuRankingLoaded = true;
+    populateJuchuYmSelect();
+    renderJuchuRanking();
+  } catch (err) {
+    document.getElementById('juchu-ranking-body').innerHTML =
+      '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+  }
+}
+
 function populateJuchuYmSelect() {
   const sel = document.getElementById('juchu-ym-select');
   const prev = sel.value;
@@ -1344,6 +1345,29 @@ function renderJuchuMonthly(data) {
 // ============================================================
 // 施設見学タブ（月ごとの見学一覧）
 // ============================================================
+
+// 施設見学タブも、タブを開いた時だけ月一覧を読み込む（遅延読み込み）
+async function openKengakuTab(el) {
+  showTab('tab-kengaku', el);
+
+  if (kengakuMonthsLoaded) {
+    populateKengakuYmSelect();
+    return;
+  }
+
+  document.getElementById('kengaku-body').innerHTML = '<div class="empty">読み込み中...</div>';
+  try {
+    const url = withKey(GAS_URL + '?type=kengaku_months');
+    const data = await fetchJSONP(url);
+    cachedKengakuMonths = (data && data.months) ? data.months : [];
+    kengakuMonthsLoaded = true;
+    populateKengakuYmSelect();
+  } catch (err) {
+    document.getElementById('kengaku-body').innerHTML =
+      '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+  }
+}
+
 function populateKengakuYmSelect() {
   const sel = document.getElementById('kengaku-ym-select');
   const prev = sel.value;
