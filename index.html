@@ -312,6 +312,7 @@
     <div class="tab" onclick="showTab('tab-shinki', this)">🏢 新規案件</div>
     <div class="tab" onclick="showTab('tab-juchu', this)">🏆 受注案件</div>
     <div class="tab" onclick="showTab('tab-kengaku', this)">🔍 施設見学</div>
+    <div class="tab" onclick="showTab('tab-fuel', this)">⛽ 燃料</div>
   </div>
 
   <!-- サマリータブ -->
@@ -409,6 +410,26 @@
     </div>
 
     <div id="kengaku-body"><div class="empty">月を選択すると、その月の施設見学一覧が表示されます</div></div>
+  </div>
+
+  <!-- 燃料タブ -->
+  <div id="tab-fuel" class="tab-content">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+      <div class="item-tab active" id="fuel-view-price" onclick="switchFuelView('price')">① 単価比較（AMS・宇佐美・コスモ）</div>
+      <div class="item-tab" id="fuel-view-compare" onclick="switchFuelView('compare')">② 宇佐美 vs 県相場</div>
+      <div class="item-tab" id="fuel-view-usage" onclick="switchFuelView('usage')">③ 使用量・人数</div>
+    </div>
+
+    <div id="fuel-hinmoku-controls" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
+
+    <div class="card">
+      <h2 id="fuel-chart-title">単価比較（AMS・宇佐美・コスモ）</h2>
+      <div style="position:relative;height:340px;">
+        <canvas id="fuel-chart"></canvas>
+      </div>
+    </div>
+
+    <div id="fuel-card-note"></div>
   </div>
 
   <!-- AIレポートタブ -->
@@ -551,6 +572,11 @@ let cachedJuchuMonthlyByYm = {};
 let cachedKengakuByYm = {};
 let cachedKengakuMonths = [];
 let kengakuMonthsLoaded = false;
+let cachedFuelRows = [];
+let fuelDataLoaded = false;
+let fuelChart = null;
+let currentFuelView = 'price';
+let currentFuelHinmoku = '軽油';
 let cachedActions = [];
 let shinkiActionsLoaded = false; // 月に依存しないため、初回以降は再取得しない
 let cachedAllFlatByYm = {}; // { ym: {perf, hr, ym} } 月ごとの取得結果を使い回すためのキャッシュ
@@ -690,6 +716,11 @@ async function loadAll(nocache) {
   const kengakuMonthsPromise = needKengakuMonths
     ? fetchJSONP(withKey(GAS_URL + '?type=kengaku_months')).catch(function() { return null; })
     : Promise.resolve(null);
+  // 燃料データも量が多いだけで月次に依存しないので、初回（または再読み込み時）のみ取得する
+  const needFuelData = nocache || !fuelDataLoaded;
+  const fuelDataPromise = needFuelData
+    ? fetchJSONP(withKey(GAS_URL + '?type=fuel_all')).catch(function() { return null; })
+    : Promise.resolve(null);
 
   let data = null;
   try {
@@ -753,6 +784,13 @@ async function loadAll(nocache) {
     kengakuMonthsLoaded = true;
   }
   populateKengakuYmSelect();
+
+  const fuelData = await fuelDataPromise;
+  if (needFuelData) {
+    cachedFuelRows = (fuelData && fuelData.rows) ? fuelData.rows : [];
+    fuelDataLoaded = true;
+  }
+  renderFuelView();
 
   const deptSel = document.getElementById('dept-select');
   const prevDept = deptSel.value;
@@ -1389,6 +1427,223 @@ function renderKengaku(data) {
 
   html += '</tbody></table></div></div>';
   body.innerHTML = html;
+}
+
+// ============================================================
+// 燃料タブ（単価比較・宇佐美 vs 県相場・使用量の推移）
+// ============================================================
+function switchFuelView(view) {
+  currentFuelView = view;
+  document.querySelectorAll('#tab-fuel .item-tab').forEach(function(el) {
+    el.classList.remove('active');
+  });
+  const btn = document.getElementById('fuel-view-' + view);
+  if (btn) btn.classList.add('active');
+  renderFuelView();
+}
+
+function selectFuelHinmoku(h) {
+  currentFuelHinmoku = h;
+  renderFuelView();
+}
+
+function renderFuelView() {
+  const hinmokuControls = document.getElementById('fuel-hinmoku-controls');
+  const cardNote = document.getElementById('fuel-card-note');
+
+  if (currentFuelView === 'compare') {
+    let html = '';
+    ['軽油', 'レギュラー', 'ハイオク', '灯油'].forEach(function(h) {
+      const activeCls = (h === currentFuelHinmoku) ? ' active' : '';
+      html += '<div class="item-tab' + activeCls + '" onclick="selectFuelHinmoku(\'' + h + '\')">' + esc(h) + '</div>';
+    });
+    hinmokuControls.innerHTML = html;
+    hinmokuControls.style.display = 'flex';
+  } else {
+    hinmokuControls.style.display = 'none';
+  }
+
+  if (currentFuelView === 'usage') {
+    renderFuelCardHolderList();
+  } else {
+    cardNote.innerHTML = '';
+  }
+
+  if (!cachedFuelRows.length) {
+    document.getElementById('fuel-chart-title').textContent = 'データがありません';
+    if (fuelChart) { fuelChart.destroy(); fuelChart = null; }
+    return;
+  }
+
+  if (currentFuelView === 'price') {
+    drawFuelPriceChart_();
+  } else if (currentFuelView === 'compare') {
+    drawFuelCompareChart_();
+  } else if (currentFuelView === 'usage') {
+    drawFuelUsageChart_();
+  }
+}
+
+// 年月の一覧（グラフの共通X軸・全期間を昇順で並べる）
+function getFuelAllYms_() {
+  return [...new Set(cachedFuelRows.map(function(r) { return r.ym; }))].sort();
+}
+
+// 区分・品目・項目・年月を指定して値を1件探す（数値でなければnull）
+function fuelLookup_(kubun, hinmoku, koumoku, ym) {
+  const row = cachedFuelRows.find(function(r) {
+    return r.kubun === kubun && r.hinmoku === hinmoku && r.koumoku === koumoku && r.ym === ym;
+  });
+  if (!row) return null;
+  const n = Number(row.value);
+  return isNaN(n) ? null : n;
+}
+
+function drawFuelPriceChart_() {
+  document.getElementById('fuel-chart-title').textContent = '単価比較（AMS・宇佐美・コスモ、消費税抜）';
+  const yms = getFuelAllYms_();
+  const names = ['AMS', '宇佐美', 'コスモ'];
+  const colors = { 'AMS': '#C98A2B', '宇佐美': '#3E7C6F', 'コスモ': '#B3492E' };
+
+  const datasets = names.map(function(name) {
+    return {
+      label: name,
+      data: yms.map(function(ym) { return fuelLookup_('給油先単価', name, '消費税抜', ym); }),
+      borderColor: colors[name],
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: 2,
+      tension: 0.25,
+      spanGaps: true
+    };
+  });
+
+  drawFuelChartCommon_(yms, datasets, '円/L', false);
+}
+
+function drawFuelCompareChart_() {
+  const h = currentFuelHinmoku;
+  document.getElementById('fuel-chart-title').textContent = h + '：宇佐美価格 vs 宮城県相場（消費税込）';
+  const yms = getFuelAllYms_();
+
+  const datasets = [
+    {
+      label: '宇佐美価格',
+      data: yms.map(function(ym) { return fuelLookup_('宇佐美価格', h, '消費税込', ym); }),
+      borderColor: '#C98A2B',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: 2,
+      tension: 0.25,
+      spanGaps: true
+    },
+    {
+      label: '宮城県相場',
+      data: yms.map(function(ym) { return fuelLookup_('県内相場', h, '消費税込', ym); }),
+      borderColor: '#3E7C6F',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderDash: [6, 4],
+      pointRadius: 2,
+      tension: 0.25,
+      spanGaps: true
+    }
+  ];
+
+  drawFuelChartCommon_(yms, datasets, '円/L', false);
+}
+
+function drawFuelUsageChart_() {
+  document.getElementById('fuel-chart-title').textContent = '使用量・人数の推移';
+  const yms = getFuelAllYms_();
+
+  const datasets = [
+    {
+      label: '給油量(ℓ)',
+      data: yms.map(function(ym) { return fuelLookup_('使用量', '給油量(ℓ)', '', ym); }),
+      borderColor: '#3E7C6F',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: 2,
+      tension: 0.25,
+      spanGaps: true,
+      yAxisID: 'y'
+    },
+    {
+      label: '人数',
+      data: yms.map(function(ym) { return fuelLookup_('使用量', '人数', '', ym); }),
+      borderColor: '#C98A2B',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: 2,
+      tension: 0.25,
+      spanGaps: true,
+      yAxisID: 'y1'
+    }
+  ];
+
+  drawFuelChartCommon_(yms, datasets, '', true);
+}
+
+function drawFuelChartCommon_(labels, datasets, unit, dualAxis) {
+  const ctx = document.getElementById('fuel-chart').getContext('2d');
+  if (fuelChart) fuelChart.destroy();
+
+  const scales = {
+    x: { ticks: { maxRotation: 0, autoSkipPadding: 10 } },
+    y: { beginAtZero: false, ticks: { callback: function(v) { return fmtNum(v); } } }
+  };
+  if (dualAxis) {
+    scales.y1 = {
+      position: 'right',
+      beginAtZero: false,
+      grid: { drawOnChartArea: false },
+      ticks: { callback: function(v) { return fmtNum(v); } }
+    };
+  }
+
+  fuelChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { bottom: 4, right: 8 } },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ctx.dataset.label + ': ' + fmtNum(ctx.raw) + (unit || ''); }
+          }
+        }
+      },
+      scales: scales
+    }
+  });
+}
+
+// カード所持者数（データが歯抜けのため、グラフではなく一覧で参考表示）
+function renderFuelCardHolderList() {
+  const note = document.getElementById('fuel-card-note');
+  const rows = cachedFuelRows
+    .filter(function(r) { return r.kubun === '使用量' && r.hinmoku === 'カード所持者'; })
+    .sort(function(a, b) { return a.ym < b.ym ? -1 : (a.ym > b.ym ? 1 : 0); });
+
+  if (!rows.length) {
+    note.innerHTML = '';
+    return;
+  }
+
+  let html = '<div class="card" style="margin-top:16px;">'
+    + '<h2>カード所持者数（参考）</h2>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">データの登録が歯抜けのため、グラフではなく一覧で参考表示しています</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+  rows.forEach(function(r) {
+    html += '<div style="padding:6px 12px;background:var(--bg);border-radius:8px;font-size:13px;">'
+      + esc(r.ym) + '：' + esc(String(r.value)) + '</div>';
+  });
+  html += '</div></div>';
+  note.innerHTML = html;
 }
 
 // グラフ用のグローバル変数
