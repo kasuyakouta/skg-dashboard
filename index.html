@@ -405,11 +405,11 @@
     <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;gap:12px;">
       <label>対象月</label>
       <select id="kengaku-ym-select" onchange="onKengakuMonthChange()">
-        <option value="">選択してください</option>
+        <option value="">すべて表示</option>
       </select>
     </div>
 
-    <div id="kengaku-body"><div class="empty">月を選択すると、その月の施設見学一覧が表示されます</div></div>
+    <div id="kengaku-body"><div class="empty">タブを開くと、施設見学の全件一覧が表示されます</div></div>
   </div>
 
   <!-- 燃料タブ -->
@@ -569,9 +569,8 @@ let cachedShinki = [];
 let cachedJuchuRanking = [];
 let juchuRankingLoaded = false;
 let cachedJuchuMonthlyByYm = {};
-let cachedKengakuByYm = {};
-let cachedKengakuMonths = [];
-let kengakuMonthsLoaded = false;
+let cachedKengakuAll = [];
+let kengakuLoaded = false;
 let cachedFuelRows = [];
 let fuelDataLoaded = false;
 let fuelChart = null;
@@ -1360,24 +1359,25 @@ function renderJuchuMonthly(data) {
 }
 
 // ============================================================
-// 施設見学タブ（月ごとの見学一覧）
+// 施設見学タブ（デフォルトは全件一覧、月選択で絞り込み）
 // ============================================================
 
-// 施設見学タブも、タブを開いた時だけ月一覧を読み込む（遅延読み込み）
+// 施設見学タブは、タブを開いた時だけ全件を読み込む（遅延読み込み）。
+// 月の絞り込みは、読み込み済みのデータを画面側でフィルタするだけなので通信は発生しない。
 async function openKengakuTab(el) {
   showTab('tab-kengaku', el);
 
-  if (kengakuMonthsLoaded) {
+  if (kengakuLoaded) {
     populateKengakuYmSelect();
     return;
   }
 
   document.getElementById('kengaku-body').innerHTML = '<div class="empty">読み込み中...</div>';
   try {
-    const url = withKey(GAS_URL + '?type=kengaku_months');
+    const url = withKey(GAS_URL + '?type=kengaku_all');
     const data = await fetchJSONP(url);
-    cachedKengakuMonths = (data && data.months) ? data.months : [];
-    kengakuMonthsLoaded = true;
+    cachedKengakuAll = (data && data.list) ? data.list : [];
+    kengakuLoaded = true;
     populateKengakuYmSelect();
   } catch (err) {
     document.getElementById('kengaku-body').innerHTML =
@@ -1389,66 +1389,56 @@ function populateKengakuYmSelect() {
   const sel = document.getElementById('kengaku-ym-select');
   const prev = sel.value;
   // 新しい月から順に表示する
-  const months = [...cachedKengakuMonths].sort().reverse();
+  const months = [...new Set(cachedKengakuAll.map(function(r) { return r.ym; }))].sort().reverse();
 
-  sel.innerHTML = '<option value="">選択してください</option>';
+  sel.innerHTML = '<option value="">すべて表示</option>';
   months.forEach(function(ym) {
     const opt = document.createElement('option');
     opt.value = ym; opt.textContent = ym;
     sel.appendChild(opt);
   });
 
+  // デフォルトは「すべて表示」。前回選択していた月があればそれを維持する
   if (prev && months.includes(prev)) {
     sel.value = prev;
-  } else {
-    // 初回表示時は、画面上部で選択中の年月と同じ月にデータがあれば自動選択する
-    const currentYm = document.getElementById('ym-select').value;
-    if (currentYm && months.includes(currentYm)) {
-      sel.value = currentYm;
-    }
   }
 
   onKengakuMonthChange();
 }
 
-async function onKengakuMonthChange() {
+// 月選択に応じて、読み込み済みデータをその場で絞り込む（通信なし）
+function onKengakuMonthChange() {
   const ym = document.getElementById('kengaku-ym-select').value;
-  const body = document.getElementById('kengaku-body');
-  if (!ym) {
-    body.innerHTML = '<div class="empty">月を選択すると、その月の施設見学一覧が表示されます</div>';
-    return;
-  }
-
-  body.innerHTML = '<div class="empty">読み込み中...</div>';
-  try {
-    if (!cachedKengakuByYm[ym]) {
-      const url = withKey(GAS_URL + '?type=kengaku_monthly&ym=' + encodeURIComponent(ym));
-      cachedKengakuByYm[ym] = await fetchJSONP(url);
-    }
-    renderKengaku(cachedKengakuByYm[ym]);
-  } catch (err) {
-    body.innerHTML = '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
-  }
+  const list = ym
+    ? cachedKengakuAll.filter(function(r) { return r.ym === ym; })
+    : cachedKengakuAll;
+  renderKengaku(list);
 }
 
-function renderKengaku(data) {
+function renderKengaku(list) {
   const body = document.getElementById('kengaku-body');
-  const list = (data && data.list) ? data.list : [];
 
   if (!list.length) {
-    body.innerHTML = '<div class="empty">この月のデータはまだ登録されていません</div>';
+    body.innerHTML = '<div class="empty">データがありません</div>';
     return;
   }
 
-  let html = '<div class="card"><h2>施設見学一覧</h2>'
+  // 新しい月が上に来るよう並べ替え
+  const sorted = [...list].sort(function(a, b) {
+    if (a.ym === b.ym) return 0;
+    return a.ym < b.ym ? 1 : -1;
+  });
+
+  let html = '<div class="card"><h2>施設見学一覧（' + sorted.length + '件）</h2>'
     + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">'
     + '<thead><tr style="border-bottom:1px solid var(--border);text-align:left;">'
-    + '<th style="padding:6px 8px;">見学日</th><th style="padding:6px 8px;">対象企業名</th>'
-    + '<th style="padding:6px 8px;">見学施設</th><th style="padding:6px 8px;">担当者</th>'
-    + '</tr></thead><tbody>';
+    + '<th style="padding:6px 8px;">月</th><th style="padding:6px 8px;">見学日</th>'
+    + '<th style="padding:6px 8px;">対象企業名</th><th style="padding:6px 8px;">見学施設</th>'
+    + '<th style="padding:6px 8px;">担当者</th></tr></thead><tbody>';
 
-  list.forEach(function(r) {
+  sorted.forEach(function(r) {
     html += '<tr style="border-bottom:1px solid var(--border);">'
+      + '<td style="padding:6px 8px;">' + esc(r.ym) + '</td>'
       + '<td style="padding:6px 8px;">' + esc(r.date) + '</td>'
       + '<td style="padding:6px 8px;">' + esc(r.company) + '</td>'
       + '<td style="padding:6px 8px;">' + esc(r.facility) + '</td>'
