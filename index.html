@@ -190,6 +190,8 @@
     border-left: 4px solid var(--accent);
     background: #FAF8F4; overflow: hidden;
   }
+  /* 部署（ユニット）列がある部署だけ、列を1つ追加したレイアウトにする */
+  .hr-item.with-unit, .hr-list-head.with-unit { grid-template-columns: 90px 90px 140px 1fr 90px 85px; }
   .hr-item.cat-good   { border-left-color: var(--success); }
   .hr-item.cat-bad    { border-left-color: var(--warning); }
   .hr-item.cat-safety { border-left-color: var(--danger); }
@@ -939,9 +941,13 @@ function renderHr() {
   depts.forEach(dept => {
     const items = cachedHr.filter(r => r.dept === dept && r.content);
     if (!items.length) return;
+    // この部署に「部署（ユニット）」の入力があるかどうかで、列を増やすか決める
+    const hasUnit = items.some(function(it) { return it.unit; });
+    const gridCls = hasUnit ? ' with-unit' : '';
     html += '<div style="margin-bottom:20px">'
       + '<div style="font-weight:600;color:var(--primary);margin-bottom:8px;font-size:14px">◾ ' + esc(dept) + '</div>'
-      + '<div class="hr-list-head">'
+      + '<div class="hr-list-head' + gridCls + '">'
+        + (hasUnit ? '<span>部署</span>' : '')
         + '<span>対象者</span><span>カテゴリ</span><span>内容</span><span>対応状況</span><span>写真</span>'
       + '</div>'
       + '<div class="hr-list">';
@@ -954,7 +960,8 @@ function renderHr() {
             return '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy">';
           }).join('')
         : '<span style="color:var(--muted);font-size:12px;">-</span>';
-      html += '<div class="hr-item ' + cls + '">'
+      html += '<div class="hr-item ' + cls + gridCls + '">'
+        + (hasUnit ? '<div class="hr-field"><span class="hr-field-label">部署</span><span class="hr-field-value">' + (item.unit ? esc(item.unit) : '-') + '</span></div>' : '')
         + '<div class="hr-field"><span class="hr-field-label">対象者</span><span class="hr-field-value">' + (item.targetPerson ? esc(item.targetPerson) : '-') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">カテゴリ</span><span class="hr-field-value">' + esc(item.category || '未分類') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">内容</span><span class="hr-field-value">' + esc(item.content) + '</span></div>'
