@@ -1877,7 +1877,13 @@ function syncItemTabsActive() {
 function renderChart() {
   const dept    = document.getElementById('dept-select').value;
   const itemKey = document.getElementById('item-select').value;
-  if (!dept || !itemKey) return;
+  if (!dept || !itemKey) {
+    // 品目が1つもない部署（総合クリエイト課など）を選んだ場合、
+    // 前に選んでいた部署のグラフが残ってしまわないよう、明示的に消す
+    if (trendChart) { trendChart.destroy(); trendChart = null; }
+    document.getElementById('chart-status').textContent = dept ? 'この部署の月次推移データはありません' : '';
+    return;
+  }
 
   // トータルメンテナンス課：全年度比較モード
   if (itemKey.indexOf('ALLYEARS::') === 0) {
