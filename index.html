@@ -1987,6 +1987,11 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
   document.getElementById('chart-status').textContent = '';
   const ctx = document.getElementById('trend-chart').getContext('2d');
   if (trendChart) trendChart.destroy();
+
+  // 目標・実績が全て整数（事故件数など）の場合は、Y軸の目盛りも整数刻みに固定する
+  // （小数刻みだと、狭いデータ範囲のときに0.1刻み等の目盛りが四捨五入されて重複表示されてしまうため）
+  const allInts = targets.concat(actuals).every(function(v){ return v === null || Number.isInteger(v); });
+
   trendChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -2035,10 +2040,10 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
         x: {
           ticks: { maxRotation: 0, autoSkipPadding: 8 }
         },
-        y: {
-          beginAtZero: false,
-          ticks: { callback: function(v){ return fmtNum(v); } }
-        }
+        y: Object.assign(
+          { beginAtZero: false, ticks: { callback: function(v){ return fmtNum(v); } } },
+          allInts ? { ticks: { stepSize: 1, precision: 0, callback: function(v){ return fmtNum(v); } } } : {}
+        )
       }
     }
   });
