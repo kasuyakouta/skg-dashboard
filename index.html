@@ -777,6 +777,9 @@ async function loadAll(nocache) {
   // 初回のみ：初期部署のグラフ・品目（デフォルトは「全品目 粗利益合計」）を自動描画
   if (deptAutoSelected) {
     await onDeptChange();
+  } else if (deptSel.value && cachedTrend[deptSel.value]) {
+    // 部署は変わらず対象年月だけが変わった場合でも、分析ノートは新しい月に合わせて再描画する
+    renderAnalysisNotes(deptSel.value);
   }
 
   document.getElementById('header-ym').textContent =
@@ -1823,27 +1826,23 @@ async function onDeptChange() {
 // 品目タブ生成（デフォルト指標のみを対象に、品目ごとにタブ化）
 // ============================================================
 // 分析ノート（部署によっては手入力の分析コメントがシートにある）を、
-// 新しい月から順に一覧表示する。無ければ何も表示しない。
+// 画面上部で選択中の「対象年月」に該当するものだけ表示する。無ければその旨を表示する。
 function renderAnalysisNotes(dept) {
   const wrap = document.getElementById('analysis-notes');
-  const notes = (cachedTrend[dept] || [])
-    .filter(function(r){ return r.category === "分析" && r.note; })
-    .sort(function(a, b){ return a.ym < b.ym ? 1 : (a.ym > b.ym ? -1 : 0); });
+  const currentYm = document.getElementById('ym-select').value;
 
-  if (!notes.length) {
+  const note = (cachedTrend[dept] || [])
+    .find(function(r){ return r.category === "分析" && r.note && r.ym === currentYm; });
+
+  if (!note) {
     wrap.innerHTML = '';
     return;
   }
 
-  let html = '<div class="card" style="margin-bottom:16px;"><h2>分析（根拠）</h2>'
-    + '<div style="display:flex;flex-direction:column;gap:10px;">';
-  notes.forEach(function(n) {
-    html += '<div style="padding:10px 12px;background:var(--bg);border-radius:8px;">'
-      + '<div style="font-weight:600;color:var(--primary);margin-bottom:4px;">' + esc(n.ym) + '</div>'
-      + '<div style="font-size:13px;white-space:pre-wrap;">' + esc(n.note) + '</div>'
-      + '</div>';
-  });
-  html += '</div></div>';
+  let html = '<div class="card" style="margin-bottom:16px;"><h2>分析（根拠）'
+    + '<span style="font-weight:400;font-size:13px;color:var(--muted);">　' + esc(note.ym) + '</span></h2>'
+    + '<div style="padding:10px 12px;background:var(--bg);border-radius:8px;font-size:13px;white-space:pre-wrap;">'
+    + esc(note.note) + '</div></div>';
   wrap.innerHTML = html;
 }
 
@@ -1943,18 +1942,19 @@ function renderChart() {
     // 月ごとに集計
     const targetByYm = {}, actualByYm = {};
     filtered.forEach(function(r) {
-      if (!targetByYm[r.ym]) targetByYm[r.ym] = 0;
-      if (!actualByYm[r.ym]) actualByYm[r.ym] = 0;
+      if (!targetByYm.hasOwnProperty(r.ym)) targetByYm[r.ym] = 0;
+      if (!actualByYm.hasOwnProperty(r.ym)) actualByYm[r.ym] = 0;
       if (typeof r.target === 'number') targetByYm[r.ym] += r.target;
       if (typeof r.actual === 'number') actualByYm[r.ym] += r.actual;
     });
     var targets = MONTHS.map(function(m,i){
       const ym = YEARS[i]+'-'+m;
-      return targetByYm[ym] || null;
+      // 合計が正当な0になるケースも「データなし」と誤判定しないよう、キーの有無で判定する
+      return targetByYm.hasOwnProperty(ym) ? targetByYm[ym] : null;
     });
     var actuals = MONTHS.map(function(m,i){
       const ym = YEARS[i]+'-'+m;
-      return actualByYm[ym] || null;
+      return actualByYm.hasOwnProperty(ym) ? actualByYm[ym] : null;
     });
     drawChart(labels, targets, actuals, dept, chartLabel, unit);
   } else {
@@ -1969,12 +1969,14 @@ function renderChart() {
     var targets = MONTHS.map(function(m,i){
       const ym = YEARS[i]+'-'+m;
       const r = records.find(function(x){ return x.ym===ym; });
-      return (r && r.target != null && r.target !== 0) ? r.target : null;
+      // レコードが存在する（＝抽出時にすでに「空欄ではない」と判定済み）なら、
+      // 0という正当な値も含めてそのままプロットする
+      return (r && typeof r.target === 'number') ? r.target : null;
     });
     var actuals = MONTHS.map(function(m,i){
       const ym = YEARS[i]+'-'+m;
       const r = records.find(function(x){ return x.ym===ym; });
-      return (r && r.actual != null && r.actual !== 0) ? r.actual : null;
+      return (r && typeof r.actual === 'number') ? r.actual : null;
     });
     drawChart(labels, targets, actuals, dept, chartLabel, unit);
   }
