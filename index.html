@@ -2020,17 +2020,21 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
 
   // 目標・実績の実数値だけを取り出し、Y軸の目盛り間隔を決める
   const allValues = targets.concat(actuals).filter(function(v){ return typeof v === 'number'; });
-  const allInts = allValues.length > 0 && allValues.every(function(v){ return Number.isInteger(v); });
 
   let yTicks;
-  if (allInts) {
-    // 事故件数など、整数しか出てこない場合は1刻みに固定する
-    // （小数刻みだと、狭いデータ範囲のときに目盛りが四捨五入されて重複表示されてしまうため）
-    yTicks = { stepSize: 1, precision: 0, callback: function(v){ return fmtNum(v); } };
-  } else if (allValues.length) {
+  if (allValues.length) {
     const maxV = Math.max.apply(null, allValues.concat([0]));
     const minV = Math.min.apply(null, allValues.concat([0]));
-    yTicks = { stepSize: computeNiceStep_(maxV - minV), callback: function(v){ return fmtNum(v); } };
+    const range = maxV - minV;
+    const allInts = allValues.every(function(v){ return Number.isInteger(v); });
+    if (allInts && range <= 20) {
+      // 事故件数など「整数」かつ「範囲が狭い」場合だけ1刻みに固定する
+      // （金額のように、値が整数でも範囲が広いデータまで1刻みにすると、
+      //   Chart.js側が目盛りを描き切れず、かえって不揃いな表示に戻ってしまうため）
+      yTicks = { stepSize: 1, precision: 0, callback: function(v){ return fmtNum(v); } };
+    } else {
+      yTicks = { stepSize: computeNiceStep_(range), callback: function(v){ return fmtNum(v); } };
+    }
   } else {
     yTicks = { callback: function(v){ return fmtNum(v); } };
   }
