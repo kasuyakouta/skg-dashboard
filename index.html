@@ -1646,16 +1646,31 @@ function drawFuelChartCommon_(labels, datasets, unit, dualAxis) {
   const ctx = document.getElementById('fuel-chart').getContext('2d');
   if (fuelChart) fuelChart.destroy();
 
+  // 該当する系列（データセット）の実数値から、読みやすい目盛り間隔を計算する
+  function computeTicksForDatasets_(dsList) {
+    const values = [];
+    dsList.forEach(function(ds) {
+      (ds.data || []).forEach(function(v) { if (typeof v === 'number') values.push(v); });
+    });
+    if (!values.length) return { callback: function(v) { return fmtNum(v); } };
+    const maxV = Math.max.apply(null, values.concat([0]));
+    const minV = Math.min.apply(null, values.concat([0]));
+    return { stepSize: computeNiceStep_(maxV - minV), callback: function(v) { return fmtNum(v); } };
+  }
+
+  const yDatasets  = datasets.filter(function(ds) { return ds.yAxisID !== 'y1'; });
+  const y1Datasets = datasets.filter(function(ds) { return ds.yAxisID === 'y1'; });
+
   const scales = {
     x: { ticks: { maxRotation: 0, autoSkipPadding: 10 } },
-    y: { beginAtZero: false, ticks: { callback: function(v) { return fmtNum(v); } } }
+    y: { beginAtZero: false, ticks: computeTicksForDatasets_(yDatasets) }
   };
   if (dualAxis) {
     scales.y1 = {
       position: 'right',
       beginAtZero: false,
       grid: { drawOnChartArea: false },
-      ticks: { callback: function(v) { return fmtNum(v); } }
+      ticks: computeTicksForDatasets_(y1Datasets)
     };
   }
 
@@ -1982,15 +1997,43 @@ function renderChart() {
   }
 }
 
+// 「きれいな」目盛り間隔を計算する（1・2・5・10のいずれかを10のべき乗倍した値にする）
+// Chart.js標準の自動計算だと、データ範囲によって74のような中途半端な間隔になることがあるための対策
+function computeNiceStep_(range) {
+  if (!range || range <= 0) return 1;
+  const rough = range / 8; // だいたい8分割を目安にする
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  let niceNorm;
+  if (norm < 1.5) niceNorm = 1;
+  else if (norm < 3) niceNorm = 2;
+  else if (norm < 7) niceNorm = 5;
+  else niceNorm = 10;
+  return niceNorm * mag;
+}
+
 function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
   document.getElementById('chart-title').textContent = dept + ' ｜ ' + chartLabel + ' 月次推移';
   document.getElementById('chart-status').textContent = '';
   const ctx = document.getElementById('trend-chart').getContext('2d');
   if (trendChart) trendChart.destroy();
 
-  // 目標・実績が全て整数（事故件数など）の場合は、Y軸の目盛りも整数刻みに固定する
-  // （小数刻みだと、狭いデータ範囲のときに0.1刻み等の目盛りが四捨五入されて重複表示されてしまうため）
-  const allInts = targets.concat(actuals).every(function(v){ return v === null || Number.isInteger(v); });
+  // 目標・実績の実数値だけを取り出し、Y軸の目盛り間隔を決める
+  const allValues = targets.concat(actuals).filter(function(v){ return typeof v === 'number'; });
+  const allInts = allValues.length > 0 && allValues.every(function(v){ return Number.isInteger(v); });
+
+  let yTicks;
+  if (allInts) {
+    // 事故件数など、整数しか出てこない場合は1刻みに固定する
+    // （小数刻みだと、狭いデータ範囲のときに目盛りが四捨五入されて重複表示されてしまうため）
+    yTicks = { stepSize: 1, precision: 0, callback: function(v){ return fmtNum(v); } };
+  } else if (allValues.length) {
+    const maxV = Math.max.apply(null, allValues.concat([0]));
+    const minV = Math.min.apply(null, allValues.concat([0]));
+    yTicks = { stepSize: computeNiceStep_(maxV - minV), callback: function(v){ return fmtNum(v); } };
+  } else {
+    yTicks = { callback: function(v){ return fmtNum(v); } };
+  }
 
   trendChart = new Chart(ctx, {
     type: 'line',
@@ -2040,10 +2083,7 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
         x: {
           ticks: { maxRotation: 0, autoSkipPadding: 8 }
         },
-        y: Object.assign(
-          { beginAtZero: false, ticks: { callback: function(v){ return fmtNum(v); } } },
-          allInts ? { ticks: { stepSize: 1, precision: 0, callback: function(v){ return fmtNum(v); } } } : {}
-        )
+        y: { beginAtZero: false, ticks: yTicks }
       }
     }
   });
@@ -2102,7 +2142,8 @@ function renderAllYearsChart(dept, category) {
         x: { ticks: { maxRotation: 0, autoSkipPadding: 8 } },
         y: {
           beginAtZero: true,
-          ticks: { callback: function(v){ return fmtNum(v); } }
+          // 事故件数は常に整数のため、1刻みに固定する
+          ticks: { stepSize: 1, precision: 0, callback: function(v){ return fmtNum(v); } }
         }
       }
     }
