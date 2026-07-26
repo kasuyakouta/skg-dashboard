@@ -358,6 +358,9 @@
       <div id="chart-status" style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px;"></div>
     </div>
 
+    <!-- 分析ノート（部署によっては手入力の分析コメントがある） -->
+    <div id="analysis-notes"></div>
+
     <!-- 当月品目別カード -->
     <div id="perf-body"><div class="empty">データがありません</div></div>
   </div>
@@ -519,7 +522,7 @@ const DEPT_MAIN = {
 // 単純合算すると二重カウントになるため、集計対象の品目を制限する
 // （未定義の部署は従来通り全品目を合算）
 const DEPT_SUMMARY_ITEMS = {
-  "地域インフラ共創部2課": ["RPS_合計"],
+  "地域インフラ共創部2課": ["全体合計"],
   "Re\"バース仙台扇町": ["古紙合計"],
 };
 
@@ -1706,7 +1709,7 @@ let cachedTotalMenteYears = null; // トータルメンテナンス課の全年�
 // key: 品目名||指標名（完全一致）/ filterFn: 複数品目を合算
 const DEPT_DEFAULT_CHART = {
   "地域インフラ共創部1課":  { label:"全品目 粗利益合計", filterFn: function(r){ return r.metric==="粗利益"; } },
-  "地域インフラ共創部2課":  { key:"RPS_合計||数量" },
+  "地域インフラ共創部2課":  { key:"全体合計||数量" },
   "感動デザイン課":         { key:"キング||数量" },
   "総合クリエイト課":       null,
   "トータルメンテナンス課": { key:"車輌事故||件数" },
@@ -1738,6 +1741,7 @@ async function onDeptChange() {
     chartCard.style.display = 'none';
     itemSel.style.display = 'none';
     document.getElementById('item-tabs').style.display = 'none';
+    document.getElementById('analysis-notes').innerHTML = '';
     return;
   }
 
@@ -1770,10 +1774,13 @@ async function onDeptChange() {
   }
 
   // デフォルト設定を先頭に追加してから品目プルダウンを構築
+  // （「分析」カテゴリはグラフの品目ではなく、下部の分析ノートとして別に表示するため除外する）
   const def = DEPT_DEFAULT_CHART[dept];
-  const itemKeys = [...new Set(cachedTrend[dept].map(function(r){
-    return r.item + '||' + r.metric;
-  }))];
+  const itemKeys = [...new Set(
+    cachedTrend[dept]
+      .filter(function(r){ return r.category !== "分析"; })
+      .map(function(r){ return r.item + '||' + r.metric; })
+  )];
 
   let optionsHtml = '';
   // デフォルト（合計）選択肢を先頭に追加
@@ -1809,11 +1816,37 @@ async function onDeptChange() {
 
   document.getElementById('chart-status').textContent = '';
   renderChart();
+  renderAnalysisNotes(dept);
 }
 
 // ============================================================
 // 品目タブ生成（デフォルト指標のみを対象に、品目ごとにタブ化）
 // ============================================================
+// 分析ノート（部署によっては手入力の分析コメントがシートにある）を、
+// 新しい月から順に一覧表示する。無ければ何も表示しない。
+function renderAnalysisNotes(dept) {
+  const wrap = document.getElementById('analysis-notes');
+  const notes = (cachedTrend[dept] || [])
+    .filter(function(r){ return r.category === "分析" && r.note; })
+    .sort(function(a, b){ return a.ym < b.ym ? 1 : (a.ym > b.ym ? -1 : 0); });
+
+  if (!notes.length) {
+    wrap.innerHTML = '';
+    return;
+  }
+
+  let html = '<div class="card" style="margin-bottom:16px;"><h2>分析（根拠）</h2>'
+    + '<div style="display:flex;flex-direction:column;gap:10px;">';
+  notes.forEach(function(n) {
+    html += '<div style="padding:10px 12px;background:var(--bg);border-radius:8px;">'
+      + '<div style="font-weight:600;color:var(--primary);margin-bottom:4px;">' + esc(n.ym) + '</div>'
+      + '<div style="font-size:13px;white-space:pre-wrap;">' + esc(n.note) + '</div>'
+      + '</div>';
+  });
+  html += '</div></div>';
+  wrap.innerHTML = html;
+}
+
 function renderItemTabs(dept) {
   const tabsWrap = document.getElementById('item-tabs');
   const tabsInner = tabsWrap.querySelector('div');
