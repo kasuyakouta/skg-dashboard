@@ -1557,26 +1557,26 @@ function renderUkakezan(list, isDefaultView) {
   const title = isDefaultView ? '現在未解決の案件（' + sorted.length + '件）' : '指摘された案件（' + sorted.length + '件）';
 
   let html = '<div class="card"><h2>' + title + '</h2>'
-    + '<div style="display:flex;flex-direction:column;gap:10px;">';
+    + '<div style="display:flex;flex-direction:column;gap:6px;">';
 
   sorted.forEach(function(r) {
     const statusBadge = r.resolved
       ? '<span class="cat-badge cat-good">済</span>'
       : '<span class="cat-badge cat-bad">' + (r.result ? esc(r.result) : '未解決') + '</span>';
 
-    html += '<div style="padding:10px 12px;background:var(--bg);border-radius:8px;">'
-      + '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:4px;">'
+    html += '<div style="padding:8px 10px;background:var(--bg);border-radius:8px;line-height:1.5;">'
+      + '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:2px;">'
         + '<div><span style="font-weight:600;">' + esc(r.customer) + '</span>'
-          + '<span style="color:var(--muted);font-size:12px;margin-left:8px;">' + esc(r.code) + '</span></div>'
+          + '<span style="color:var(--muted);font-size:12px;margin-left:8px;">' + esc(r.code) + '</span>'
+          + '<span style="color:var(--muted);font-size:12px;margin-left:10px;">'
+            + '指摘日：' + esc(r.flagDate) + (r.billing ? '　｜　請求日：' + esc(r.billing) : '')
+          + '</span></div>'
         + '<div>' + statusBadge + '</div>'
       + '</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">'
-        + '指摘日：' + esc(r.flagDate) + (r.billing ? '　｜　請求日：' + esc(r.billing) : '')
-      + '</div>'
-      + (r.reason ? '<div style="font-size:13px;margin-bottom:4px;"><b>理由：</b>' + esc(r.reason) + '</div>' : '')
-      + (r.response ? '<div style="font-size:13px;margin-bottom:4px;white-space:pre-wrap;"><b>返答：</b>' + esc(r.response) + '</div>' : '')
-      + (r.salesCheck ? '<div style="font-size:13px;margin-bottom:4px;white-space:pre-wrap;"><b>営業確認：</b>' + esc(r.salesCheck) + '</div>' : '')
-      + (r.payCheck ? '<div style="font-size:13px;margin-bottom:4px;white-space:pre-wrap;"><b>入金確認：</b>' + esc(r.payCheck) + '</div>' : '')
+      + (r.reason ? '<div style="font-size:13px;"><b>理由：</b>' + esc(r.reason) + '</div>' : '')
+      + (r.response ? '<div style="font-size:13px;white-space:pre-wrap;"><b>返答：</b>' + esc(r.response) + '</div>' : '')
+      + (r.salesCheck ? '<div style="font-size:13px;white-space:pre-wrap;"><b>営業確認：</b>' + esc(r.salesCheck) + '</div>' : '')
+      + (r.payCheck ? '<div style="font-size:13px;white-space:pre-wrap;"><b>入金確認：</b>' + esc(r.payCheck) + '</div>' : '')
       + (r.note ? '<div style="font-size:12px;color:var(--muted);white-space:pre-wrap;"><b>備考：</b>' + esc(r.note) + '</div>' : '')
       + '</div>';
   });
