@@ -1535,8 +1535,13 @@ function onUkakezanMonthChange() {
     // 特定の月を選んだ場合：解決・未解決を問わず、その月に指摘された案件を全件表示
     renderUkakezan(cachedUkakezanAll.filter(function(r) { return r.ym === ym; }), false);
   } else {
-    // デフォルト：現在「結果」が済になっていない、未解決の案件のみ表示
-    renderUkakezan(cachedUkakezanAll.filter(function(r) { return !r.resolved; }), true);
+    // デフォルト：「結果」が済になっておらず、かつ「今年」指摘された案件のみ表示。
+    // 今年より前の案件は実質解決済みのはずなので、ここで除外する。
+    // 年は毎回その時点の西暦から自動判定するため、年が変わってもコード修正は不要。
+    const currentYear = String(new Date().getFullYear());
+    renderUkakezan(cachedUkakezanAll.filter(function(r) {
+      return !r.resolved && r.ym && r.ym.slice(0, 4) === currentYear;
+    }), true);
   }
 }
 
