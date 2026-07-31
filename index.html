@@ -202,7 +202,7 @@
   @media (max-width: 640px) {
     .hr-field-label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
   }
-  .hr-field-value { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .hr-field-value { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.6; }
   .hr-field-value.hr-status-完了   { color: var(--success-text); font-weight: 600; }
   .hr-field-value.hr-status-対応中 { color: var(--warning-text); font-weight: 600; }
   .hr-field-value.hr-status-未対応 { color: var(--danger-text); font-weight: 600; }
@@ -341,6 +341,8 @@
       <select id="dept-select" onchange="onDeptChange()">
         <option value="">全部署（当月カード表示）</option>
       </select>
+      <label style="margin-left:8px;">年度</label>
+      <select id="perf-fy-select" onchange="onFiscalYearChange()" style="display:none;"></select>
       <label style="margin-left:8px;">品目</label>
       <select id="item-select" onchange="syncItemTabsActive(); renderChart();" style="display:none;"></select>
     </div>
@@ -951,6 +953,21 @@ function renderSummary(DEPTS_ARG) {
 // ============================================================
 // 人事コメント描画
 // ============================================================
+// 人事コメントの「内容」を、スプレッドシート上の太字・文字色（あれば）を反映してHTML化する。
+// リッチテキスト情報が無い場合は、通常通りエスケープした文字列だけを返す。
+function renderHrContent_(item) {
+  if (!item.contentRuns || !item.contentRuns.length) {
+    return esc(item.content);
+  }
+  return item.contentRuns.map(function(run) {
+    const styles = [];
+    if (run.bold) styles.push('font-weight:700');
+    if (run.color && run.color.toLowerCase() !== '#000000') styles.push('color:' + run.color);
+    const text = esc(run.text);
+    return styles.length ? '<span style="' + styles.join(';') + '">' + text + '</span>' : text;
+  }).join('');
+}
+
 function renderHr() {
   const body = document.getElementById('hr-body');
   if (!cachedHr.length) {
@@ -986,7 +1003,7 @@ function renderHr() {
         + (hasUnit ? '<div class="hr-field"><span class="hr-field-label">部署</span><span class="hr-field-value">' + (item.unit ? esc(item.unit) : '-') + '</span></div>' : '')
         + '<div class="hr-field"><span class="hr-field-label">対象者</span><span class="hr-field-value">' + (item.targetPerson ? esc(item.targetPerson) : '-') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">カテゴリ</span><span class="hr-field-value">' + esc(item.category || '未分類') + '</span></div>'
-        + '<div class="hr-field"><span class="hr-field-label">内容</span><span class="hr-field-value">' + esc(item.content) + '</span></div>'
+        + '<div class="hr-field"><span class="hr-field-label">内容</span><span class="hr-field-value">' + renderHrContent_(item) + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">対応状況</span><span class="hr-field-value ' + statusCls + '">' + (item.status ? esc(item.status) : '-') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">写真</span><span class="hr-field-value">' + photosHtml + '</span></div>'
         + '</div>';
@@ -1854,7 +1871,10 @@ function renderFuelCardHolderList() {
 
 // グラフ用のグローバル変数
 let trendChart = null;
-let cachedTrend = {};  // { dept: records[] }
+let cachedTrend = {};  // { dept: records[] }（選択中の年度のデータを保持。年度変更時にクリアされる）
+let cachedFiscalYears = [];
+let fiscalYearsLoaded = false;
+let selectedFy = null; // 部署別実績で選択中の年度（nullなら未初期化＝現在の年度を後で設定）
 let cachedTotalMenteYears = null; // トータルメンテナンス課の全年度比較データ
 
 // 各部署のグラフデフォルト設定
@@ -1888,10 +1908,12 @@ async function onDeptChange() {
 
   const chartCard = document.getElementById('chart-card');
   const itemSel   = document.getElementById('item-select');
+  const fySel     = document.getElementById('perf-fy-select');
 
   if (!dept) {
     chartCard.style.display = 'none';
     itemSel.style.display = 'none';
+    fySel.style.display = 'none';
     document.getElementById('item-tabs').style.display = 'none';
     document.getElementById('analysis-notes').innerHTML = '';
     return;
@@ -1899,13 +1921,63 @@ async function onDeptChange() {
 
   chartCard.style.display = 'block';
   itemSel.style.display = 'inline-block';
+  fySel.style.display = 'inline-block';
   document.getElementById('chart-title').textContent = dept + ' 月次推移';
   document.getElementById('chart-status').textContent = '月次データ取得中...';
 
-  if (!cachedTrend[dept]) {
-    document.getElementById('chart-status').textContent = '月次データ取得中...';
+  await populateFiscalYearSelect();
+  await loadDeptTrendAndRender(dept);
+}
+
+// 年度選択プルダウンを準備する（選択可能な年度の一覧は初回のみ取得し、以降は使い回す）
+async function populateFiscalYearSelect() {
+  const sel = document.getElementById('perf-fy-select');
+  if (!fiscalYearsLoaded) {
     try {
-      const url = withKey(GAS_URL + '?type=trend_flat&dept=' + encodeURIComponent(dept));
+      const url = withKey(GAS_URL + '?type=fiscal_years');
+      const data = await fetchJSONP(url);
+      cachedFiscalYears = (data && data.years) ? data.years : [];
+      if (selectedFy === null) {
+        selectedFy = (data && data.currentFy) ? data.currentFy : (cachedFiscalYears[0] || null);
+      }
+    } catch (err) {
+      cachedFiscalYears = [];
+    }
+    fiscalYearsLoaded = true;
+  }
+
+  const prev = sel.value;
+  sel.innerHTML = '';
+  cachedFiscalYears.forEach(function(fy) {
+    const opt = document.createElement('option');
+    opt.value = fy; opt.textContent = fy + '年度';
+    sel.appendChild(opt);
+  });
+  if (prev && cachedFiscalYears.indexOf(Number(prev)) > -1) {
+    sel.value = prev;
+  } else if (selectedFy !== null) {
+    sel.value = selectedFy;
+  }
+}
+
+// 年度が変更された時：選択中の部署のキャッシュを消し、新しい年度のデータを取得し直す
+async function onFiscalYearChange() {
+  const dept = document.getElementById('dept-select').value;
+  if (!dept) return;
+  selectedFy = Number(document.getElementById('perf-fy-select').value);
+  delete cachedTrend[dept];
+  document.getElementById('chart-status').textContent = '月次データ取得中...';
+  await loadDeptTrendAndRender(dept);
+}
+
+// 指定部署・選択中の年度のトレンドデータを取得し、グラフ・品目一覧・分析ノートまで描画する
+async function loadDeptTrendAndRender(dept) {
+  const itemSel = document.getElementById('item-select');
+
+  if (!cachedTrend[dept]) {
+    try {
+      const fyParam = selectedFy !== null ? '&fy=' + encodeURIComponent(selectedFy) : '';
+      const url = withKey(GAS_URL + '?type=trend_flat&dept=' + encodeURIComponent(dept) + fyParam);
       const data = await fetchJSONP(url);
       cachedTrend[dept] = data.trend || [];
     } catch(err) {
