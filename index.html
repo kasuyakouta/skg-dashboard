@@ -203,6 +203,9 @@
     .hr-field-label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
   }
   .hr-field-value { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.6; }
+  /* 部署・対象者・カテゴリは列幅が固定のため、文字数が多いと2段落ちしやすい。
+     JS側(fitHrText_)でscrollWidthを見て自動的にfont-sizeを縮小し、1行に収める。 */
+  .hr-field-value.hr-fit { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hr-field-value.hr-status-完了   { color: var(--success-text); font-weight: 600; }
   .hr-field-value.hr-status-対応中 { color: var(--warning-text); font-weight: 600; }
   .hr-field-value.hr-status-未対応 { color: var(--danger-text); font-weight: 600; }
@@ -640,6 +643,12 @@ function showTab(id, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   el.classList.add('active');
+  // hrタブは非表示(display:none)中に描画されている場合、幅が0のためフォント縮小の判定ができない。
+  // 表示に切り替わったタイミングで再計算する。
+  if (id === 'tab-hr') {
+    const body = document.getElementById('hr-body');
+    if (body) fitHrText_(body);
+  }
 }
 
 // ============================================================
@@ -1000,9 +1009,9 @@ function renderHr() {
           }).join('')
         : '<span style="color:var(--muted);font-size:12px;">-</span>';
       html += '<div class="hr-item ' + cls + gridCls + '">'
-        + (hasUnit ? '<div class="hr-field"><span class="hr-field-label">部署</span><span class="hr-field-value">' + (item.unit ? esc(item.unit) : '-') + '</span></div>' : '')
-        + '<div class="hr-field"><span class="hr-field-label">対象者</span><span class="hr-field-value">' + (item.targetPerson ? esc(item.targetPerson) : '-') + '</span></div>'
-        + '<div class="hr-field"><span class="hr-field-label">カテゴリ</span><span class="hr-field-value">' + esc(item.category || '未分類') + '</span></div>'
+        + (hasUnit ? '<div class="hr-field"><span class="hr-field-label">部署</span><span class="hr-field-value hr-fit">' + (item.unit ? esc(item.unit) : '-') + '</span></div>' : '')
+        + '<div class="hr-field"><span class="hr-field-label">対象者</span><span class="hr-field-value hr-fit">' + (item.targetPerson ? esc(item.targetPerson) : '-') + '</span></div>'
+        + '<div class="hr-field"><span class="hr-field-label">カテゴリ</span><span class="hr-field-value hr-fit">' + esc(item.category || '未分類') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">内容</span><span class="hr-field-value">' + renderHrContent_(item) + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">対応状況</span><span class="hr-field-value ' + statusCls + '">' + (item.status ? esc(item.status) : '-') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">写真</span><span class="hr-field-value">' + photosHtml + '</span></div>'
@@ -1011,7 +1020,28 @@ function renderHr() {
     html += '</div></div>';
   });
   body.innerHTML = html || '<div class="empty">コメントがありません</div>';
+  fitHrText_(body);
 }
+
+// 部署・対象者・カテゴリの文字が列幅に対して長い場合、2段落ちしないようfont-sizeを自動縮小する
+function fitHrText_(container) {
+  const MIN_SIZE = 10;
+  container.querySelectorAll('.hr-fit').forEach(function(el) {
+    el.style.fontSize = '';
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth + 0.5 && size > MIN_SIZE) {
+      size -= 0.5;
+      el.style.fontSize = size + 'px';
+    }
+  });
+}
+window.addEventListener('resize', function() {
+  clearTimeout(window._hrFitResizeTimer);
+  window._hrFitResizeTimer = setTimeout(function() {
+    const body = document.getElementById('hr-body');
+    if (body) fitHrText_(body);
+  }, 150);
+});
 
 // 人事報告の写真を拡大表示する
 function openLightbox(url) {
