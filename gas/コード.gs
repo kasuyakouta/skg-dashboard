@@ -161,7 +161,7 @@ function cacheGet_(key) {
   } catch(e) { return null; }
 }
 
-function cachePut_(key, data) {
+function cachePut_(key, data, ttlSeconds) {
   try {
     const cache = CacheService.getScriptCache();
     const json = JSON.stringify(data);
@@ -170,8 +170,56 @@ function cachePut_(key, data) {
     for (var i = 0; i * CHUNK_SIZE < json.length; i++) {
       obj[key + '_' + i] = json.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
     }
-    cache.putAll(obj, CACHE_EXPIRE_SEC);
+    cache.putAll(obj, ttlSeconds || CACHE_EXPIRE_SEC);
   } catch(e) { Logger.log('cacheエラー: ' + e.toString()); }
+}
+
+// 分割キャッシュ(cachePut_で書いたキー)をまとめて削除する
+function cacheRemove_(key) {
+  const cache = CacheService.getScriptCache();
+  const keys = [];
+  for (var i = 0; i < 20; i++) keys.push(key + '_' + i);
+  cache.removeAll(keys);
+}
+
+// ============================================================
+// 【Step3追加】読み取りキャッシュのTTL設定(秒)
+// 更新頻度・リアルタイム性を踏まえて設定(詳細はCACHE_RULES設計を参照)
+// ============================================================
+const CACHE_TTL = {
+  trend_flat:       300,   // 部署別実績の月次推移
+  fiscal_years:      21600, // 年度選択プルダウン(年1回更新)
+  infographic:       1800,  // 月次インフォグラフィック(月1回手動更新)
+  shinki_anken:      600,   // 感動デザイン課:新規案件
+  actions:           120,   // 次回アクション(会議前後の更新に配慮し短め)
+  totalmente_years:  3600,  // トータルメンテナンス課:事故件数全年度比較
+  juchu_rows:        300,   // 受注案件_入力(ranking/monthlyで共有)
+  kengaku_all:       900,   // 施設見学
+  ukakezan_all:      300    // 売掛残物件
+};
+
+// ============================================================
+// 【Step3追加】汎用キャッシュラッパー
+// キャッシュミス時のみLockServiceで排他制御しつつシートを読み、
+// 同時アクセスによるキャッシュの二重生成(cache stampede)を防ぐ。
+// ============================================================
+function getOrFetchWithCache_(cacheKey, ttlSeconds, fetchFn) {
+  const cached = cacheGet_(cacheKey);
+  if (cached !== null) return cached;
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    // ロック取得までの間に他の実行がキャッシュを作っていないか再確認
+    const cachedAfterLock = cacheGet_(cacheKey);
+    if (cachedAfterLock !== null) return cachedAfterLock;
+
+    const data = fetchFn();
+    cachePut_(cacheKey, data, ttlSeconds);
+    return data;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ============================================================
@@ -725,31 +773,33 @@ function extractTotalMente_(data, dept, filterYm) {
 //   来年度以降に年度の行が増えても、この関数の修正は不要。
 // ============================================================
 function getTotalMenteAllYears_() {
-  const ss = getSpreadsheet_();
-  const ws = ss.getSheetByName("実績_トータルメンテナンス課");
-  if (!ws) return { categories: [] };
+  return getOrFetchWithCache_('totalmente_years_v1', CACHE_TTL.totalmente_years, function() {
+    const ss = getSpreadsheet_();
+    const ws = ss.getSheetByName("実績_トータルメンテナンス課");
+    if (!ws) return { categories: [] };
 
-  const data = ws.getDataRange().getValues();
-  const blocks = findTotalMenteBlocks_(data);
+    const data = ws.getDataRange().getValues();
+    const blocks = findTotalMenteBlocks_(data);
 
-  const categories = blocks.map(function(block) {
-    const years = [];
-    for (var r = block.dataStartRow; r <= data.length; r++) {
-      const row = data[r - 1];
-      if (!row || !row[0]) break; // 空行に達したら終了
-      const monthly = [];
-      // 実際のシートは4月がC列（0-indexedで2）から始まるため、2〜13を読む
-      // （以前は1〜12としており、全ての月が1列ズレて読み取られていた）
-      for (var c = 2; c <= 13; c++) {
-        const v = row[c];
-        monthly.push(typeof v === "number" ? v : null);
+    const categories = blocks.map(function(block) {
+      const years = [];
+      for (var r = block.dataStartRow; r <= data.length; r++) {
+        const row = data[r - 1];
+        if (!row || !row[0]) break; // 空行に達したら終了
+        const monthly = [];
+        // 実際のシートは4月がC列（0-indexedで2）から始まるため、2〜13を読む
+        // （以前は1〜12としており、全ての月が1列ズレて読み取られていた）
+        for (var c = 2; c <= 13; c++) {
+          const v = row[c];
+          monthly.push(typeof v === "number" ? v : null);
+        }
+        years.push({ year: String(row[0]), monthly: monthly });
       }
-      years.push({ year: String(row[0]), monthly: monthly });
-    }
-    return { category: block.category, years: years };
-  });
+      return { category: block.category, years: years };
+    });
 
-  return { categories: categories };
+    return { categories: categories };
+  });
 }
 
 function extractKando_(data, dept, filterYm) {
@@ -1174,6 +1224,18 @@ const FLAT_HR_COLS    = ["dept","ym","unit_","category","targetPerson","content"
 //   下記 setupEditTrigger() を一度手動実行してインストーラブル
 //   トリガーとして登録する必要がある。
 // ============================================================
+// 実績・人事シート以外で、独自キャッシュを持つシート名 → 無効化すべきキャッシュキーの対応表
+// (Step3でキャッシュを追加した際に、対象シートをここへ追加する)
+function getOtherCacheSheetMap_() {
+  const map = {};
+  map[SHINKI_SHEET]   = ['shinki_v1'];
+  map[ACTION_SHEET]   = ['actions_v1'];
+  map[JUCHU_SHEET]    = ['juchu_rows_v1'];
+  map[KENGAKU_SHEET]  = ['kengaku_v1'];
+  map[UKAKEZAN_SHEET] = ['ukakezan_v1'];
+  return map;
+}
+
 function onEditInstallable(e) {
   try {
     if (!e || !e.range) return;
@@ -1181,6 +1243,13 @@ function onEditInstallable(e) {
 
     // フラットログシート自身の編集は無視（無限ループ防止）
     if (sheetName === FLAT_PERF_SHEET || sheetName === FLAT_HR_SHEET) return;
+
+    // 実績・人事シート以外の、独自キャッシュを持つシートの編集を検知
+    const otherCacheKeys = getOtherCacheSheetMap_()[sheetName];
+    if (otherCacheKeys) {
+      otherCacheKeys.forEach(cacheRemove_);
+      return;
+    }
 
     // 編集されたシートがどの部署のものか判定
     let targetDept = null;
@@ -1194,6 +1263,11 @@ function onEditInstallable(e) {
 
     updateFlatLogForDept_(targetDept);
     clearDeptCache_(targetDept);
+
+    // トータルメンテナンス課の実績シート編集時は、全年度比較キャッシュも無効化する
+    if (DEPT_CONFIG[targetDept].perfSheet === "実績_トータルメンテナンス課") {
+      cacheRemove_('totalmente_years_v1');
+    }
   } catch (err) {
     Logger.log("onEditInstallableエラー: " + err.toString());
   }
@@ -1316,6 +1390,10 @@ function writeFlatLog_(sheetName, columns, dept, records) {
   if (sheetName === FLAT_PERF_SHEET || sheetName === FLAT_HR_SHEET) {
     invalidateFlatLogCache_();
   }
+  // 実績データが更新されたので、その部署・当年度分のtrendキャッシュも無効化する
+  if (sheetName === FLAT_PERF_SHEET) {
+    cacheRemove_('trend_v1_' + dept + '_' + getFyStart_());
+  }
 }
 
 // 当年度の全月分＋"all"のキャッシュキーをまとめて無効化する
@@ -1400,52 +1478,58 @@ function getFromFlatLog_(ym) {
 // それ以外（過去年度）が指定された場合は「アーカイブ_実績_全年度」を読みに行く。
 // アーカイブは複数年度分が混在しているため、該当年度の月だけに絞り込む。
 function getTrendFromFlatLog_(dept, fy) {
-  const ss = getSpreadsheet_();
   const currentFy = getFyStart_();
   const targetFy = fy ? Number(fy) : currentFy;
-  const useArchive = targetFy !== currentFy;
+  const cacheKey = 'trend_v1_' + dept + '_' + targetFy;
 
-  const ws = ss.getSheetByName(useArchive ? ARCHIVE_SHEET : FLAT_PERF_SHEET);
-  const perfData = ws && ws.getLastRow() > 1
-    ? ws.getRange(2, 1, ws.getLastRow()-1, FLAT_PERF_COLS.length).getValues() : [];
+  return getOrFetchWithCache_(cacheKey, CACHE_TTL.trend_flat, function() {
+    const ss = getSpreadsheet_();
+    const useArchive = targetFy !== currentFy;
 
-  const fyMonths = getFiscalYearMonths_(targetFy);
+    const ws = ss.getSheetByName(useArchive ? ARCHIVE_SHEET : FLAT_PERF_SHEET);
+    const perfData = ws && ws.getLastRow() > 1
+      ? ws.getRange(2, 1, ws.getLastRow()-1, FLAT_PERF_COLS.length).getValues() : [];
 
-  const trend = perfData
-    .filter(function(row){ return row[0] === dept; })
-    .map(function(row){
-      return { dept:row[0], ym:normalizeYm_(row[1]), category:row[2], item:row[3], metric:row[4],
-               target:row[5], actual:row[6], unit:row[7], prevYear:row[8] || null, note:row[9] || null };
-    })
-    .filter(function(r){ return fyMonths.indexOf(r.ym) > -1; });
+    const fyMonths = getFiscalYearMonths_(targetFy);
 
-  return { trend: trend, dept: dept, fy: targetFy };
+    const trend = perfData
+      .filter(function(row){ return row[0] === dept; })
+      .map(function(row){
+        return { dept:row[0], ym:normalizeYm_(row[1]), category:row[2], item:row[3], metric:row[4],
+                 target:row[5], actual:row[6], unit:row[7], prevYear:row[8] || null, note:row[9] || null };
+      })
+      .filter(function(r){ return fyMonths.indexOf(r.ym) > -1; });
+
+    return { trend: trend, dept: dept, fy: targetFy };
+  });
 }
 
 // ダッシュボードの年度選択プルダウン用：現在の年度＋アーカイブに存在する年度の一覧を返す
 function getAvailableFiscalYears_() {
-  const ss = getSpreadsheet_();
-  const currentFy = getFyStart_();
-  const years = {};
-  years[currentFy] = true;
+  return getOrFetchWithCache_('fiscalyears_v1', CACHE_TTL.fiscal_years, function() {
+    const ss = getSpreadsheet_();
+    const currentFy = getFyStart_();
+    const years = {};
+    years[currentFy] = true;
 
-  const archiveWs = ss.getSheetByName(ARCHIVE_SHEET);
-  if (archiveWs && archiveWs.getLastRow() > 1) {
-    const ymIdx = FLAT_PERF_COLS.indexOf("ym");
-    const data = archiveWs.getRange(2, ymIdx + 1, archiveWs.getLastRow() - 1, 1).getValues();
-    data.forEach(function(row) {
-      const ym = normalizeYm_(row[0]);
-      if (!ym) return;
-      const year  = Number(ym.slice(0, 4));
-      const month = Number(ym.slice(5, 7));
-      // 4月始まりの年度のため、1〜3月は前年度扱いにする
-      const fy = month >= 4 ? year : year - 1;
-      years[fy] = true;
-    });
-  }
+    const archiveWs = ss.getSheetByName(ARCHIVE_SHEET);
+    if (archiveWs && archiveWs.getLastRow() > 1) {
+      const ymIdx = FLAT_PERF_COLS.indexOf("ym");
+      const data = archiveWs.getRange(2, ymIdx + 1, archiveWs.getLastRow() - 1, 1).getValues();
+      data.forEach(function(row) {
+        const ym = normalizeYm_(row[0]);
+        if (!ym) return;
+        const year  = Number(ym.slice(0, 4));
+        const month = Number(ym.slice(5, 7));
+        // 4月始まりの年度のため、1〜3月は前年度扱いにする
+        const fy = month >= 4 ? year : year - 1;
+        years[fy] = true;
+      });
+    }
 
-  const list = Object.keys(years).map(Number).sort(function(a, b) { return b - a; });
-  return { years: list, currentFy: currentFy };
+    const list = Object.keys(years).map(Number).sort(function(a, b) { return b - a; });
+    return { years: list, currentFy: currentFy };
+  });
 }
 
 // ============================================================
@@ -1913,18 +1997,20 @@ function findInfographicRowIndex_(ws, ym) {
 
 // doGetから呼ばれる：指定月の画像ID・文章を返す
 function getInfographicForYm_(ym) {
-  const ws = getOrCreateInfographicSheet_();
-  const rowIdx = findInfographicRowIndex_(ws, ym);
-  if (rowIdx === -1) {
-    return { ym: ym, imageFileId: "", reportText: "", generatedAt: "" };
-  }
-  const row = ws.getRange(rowIdx, 1, 1, INFOGRAPHIC_COLS.length).getValues()[0];
-  return {
-    ym: normalizeYm_(row[0]),
-    imageFileId: row[1] || "",
-    reportText: row[2] || "",
-    generatedAt: row[3] ? (row[3] instanceof Date ? row[3].toISOString() : String(row[3])) : ""
-  };
+  return getOrFetchWithCache_('infographic_v1_' + ym, CACHE_TTL.infographic, function() {
+    const ws = getOrCreateInfographicSheet_();
+    const rowIdx = findInfographicRowIndex_(ws, ym);
+    if (rowIdx === -1) {
+      return { ym: ym, imageFileId: "", reportText: "", generatedAt: "" };
+    }
+    const row = ws.getRange(rowIdx, 1, 1, INFOGRAPHIC_COLS.length).getValues()[0];
+    return {
+      ym: normalizeYm_(row[0]),
+      imageFileId: row[1] || "",
+      reportText: row[2] || "",
+      generatedAt: row[3] ? (row[3] instanceof Date ? row[3].toISOString() : String(row[3])) : ""
+    };
+  });
 }
 
 // 「全体（グループ）」の文章＋画像リンクをまとめて保存する
@@ -1942,6 +2028,8 @@ function saveInfographicTextAndImage_(ym, text, imageUrlRaw) {
     ws.getRange(rowIdx, 3).setValue(text);
     ws.getRange(rowIdx, 4).setValue(generatedAt);
   }
+
+  cacheRemove_('infographic_v1_' + ym);
 }
 
 // ============================================================
@@ -2007,43 +2095,45 @@ const SHINKI_DATA_START_ROW = 3;
 const SHINKI_COL_COUNT = 16; // A〜P列
 
 function getShinkiAnkenList_() {
-  const ss = getSpreadsheet_();
-  const ws = ss.getSheetByName(SHINKI_SHEET);
-  if (!ws) return { list: [] };
+  return getOrFetchWithCache_('shinki_v1', CACHE_TTL.shinki_anken, function() {
+    const ss = getSpreadsheet_();
+    const ws = ss.getSheetByName(SHINKI_SHEET);
+    if (!ws) return { list: [] };
 
-  const lastRow = ws.getLastRow();
-  if (lastRow < SHINKI_DATA_START_ROW) return { list: [] };
+    const lastRow = ws.getLastRow();
+    if (lastRow < SHINKI_DATA_START_ROW) return { list: [] };
 
-  const numRows = lastRow - SHINKI_DATA_START_ROW + 1;
-  const data = ws.getRange(SHINKI_DATA_START_ROW, 1, numRows, SHINKI_COL_COUNT).getValues();
-  const tz = Session.getScriptTimeZone();
+    const numRows = lastRow - SHINKI_DATA_START_ROW + 1;
+    const data = ws.getRange(SHINKI_DATA_START_ROW, 1, numRows, SHINKI_COL_COUNT).getValues();
+    const tz = Session.getScriptTimeZone();
 
-  const list = [];
-  data.forEach(function(row) {
-    const dateVal = row[1]; // B列：発見日
-    if (!dateVal) return;
-    const date = (dateVal instanceof Date) ? dateVal : new Date(dateVal);
-    if (isNaN(date.getTime())) return;
+    const list = [];
+    data.forEach(function(row) {
+      const dateVal = row[1]; // B列：発見日
+      if (!dateVal) return;
+      const date = (dateVal instanceof Date) ? dateVal : new Date(dateVal);
+      if (isNaN(date.getTime())) return;
 
-    list.push({
-      no:           row[0],
-      date:         Utilities.formatDate(date, tz, "yyyy-MM-dd"),
-      ym:           Utilities.formatDate(date, tz, "yyyy-MM"),
-      provider:     row[2],  // C列：情報提供者
-      source:       row[4],  // E列：情報源
-      place:        row[5],  // F列：場所
-      propertyName: row[6],  // G列：物件名
-      rank:         row[7],  // H列：ランク
-      siteStatus:   row[8],  // I列：現場状況
-      salesPerson:  row[10], // K列：営業担当
-      result:       row[15]  // P列：結果
+      list.push({
+        no:           row[0],
+        date:         Utilities.formatDate(date, tz, "yyyy-MM-dd"),
+        ym:           Utilities.formatDate(date, tz, "yyyy-MM"),
+        provider:     row[2],  // C列：情報提供者
+        source:       row[4],  // E列：情報源
+        place:        row[5],  // F列：場所
+        propertyName: row[6],  // G列：物件名
+        rank:         row[7],  // H列：ランク
+        siteStatus:   row[8],  // I列：現場状況
+        salesPerson:  row[10], // K列：営業担当
+        result:       row[15]  // P列：結果
+      });
     });
+
+    // 発見日が新しい順に並べる
+    list.sort(function(a, b) { return a.date < b.date ? 1 : -1; });
+
+    return { list: list };
   });
-
-  // 発見日が新しい順に並べる
-  list.sort(function(a, b) { return a.date < b.date ? 1 : -1; });
-
-  return { list: list };
 }
 
 // ===================================================================
@@ -2078,22 +2168,24 @@ function getOrCreateActionSheet_() {
 }
 
 function getActionsList_() {
-  const ws = getOrCreateActionSheet_();
-  if (ws.getLastRow() <= 1) return { list: [] };
+  return getOrFetchWithCache_('actions_v1', CACHE_TTL.actions, function() {
+    const ws = getOrCreateActionSheet_();
+    if (ws.getLastRow() <= 1) return { list: [] };
 
-  const data = ws.getRange(2, 1, ws.getLastRow() - 1, ACTION_COLS.length).getValues();
-  const list = data
-    .filter(function(row) { return row[0]; })
-    .map(function(row) {
-      return {
-        dept:   row[0],
-        ym:     normalizeYm_(row[1]),
-        text:   row[2],
-        status: row[3] || "未着手"
-      };
-    });
+    const data = ws.getRange(2, 1, ws.getLastRow() - 1, ACTION_COLS.length).getValues();
+    const list = data
+      .filter(function(row) { return row[0]; })
+      .map(function(row) {
+        return {
+          dept:   row[0],
+          ym:     normalizeYm_(row[1]),
+          text:   row[2],
+          status: row[3] || "未着手"
+        };
+      });
 
-  return { list: list };
+    return { list: list };
+  });
 }
 
 // ===================================================================
@@ -2186,11 +2278,17 @@ function getJuchuRows_() {
   return rows;
 }
 
+// getJuchuRows_をキャッシュ経由で取得（getJuchuRanking_とgetJuchuMonthly_で共有し、
+// 同一シートの二重読み取りを避ける）
+function getJuchuRowsCached_() {
+  return getOrFetchWithCache_('juchu_rows_v1', CACHE_TTL.juchu_rows, getJuchuRows_);
+}
+
 // 年度累計・担当者別ランキング（「受注案件」行の金額のみを集計対象とする）
 function getJuchuRanking_() {
   const fy = getFyStart_();
   const fyMonths = getFiscalYearMonths_(fy);
-  const rows = getJuchuRows_().filter(function(r) {
+  const rows = getJuchuRowsCached_().filter(function(r) {
     return r.kind === "受注案件" && fyMonths.indexOf(r.ym) > -1 && r.person;
   });
 
@@ -2219,7 +2317,7 @@ function getJuchuRanking_() {
 // 指定月の「大型案件情報」「主な受注案件」を返す
 function getJuchuMonthly_(ym) {
   if (!ym) return { juchu: [], large: [] };
-  const rows = getJuchuRows_().filter(function(r) { return r.ym === ym; });
+  const rows = getJuchuRowsCached_().filter(function(r) { return r.ym === ym; });
   return {
     juchu: rows.filter(function(r) { return r.kind === "受注案件"; }),
     large: rows.filter(function(r) { return r.kind === "大型案件"; })
@@ -2302,7 +2400,9 @@ function getKengakuRows_() {
 
 // 施設見学の全件を返す（デフォルトは全件一覧、月での絞り込みは画面側で行う）
 function getKengakuAll_() {
-  return { list: getKengakuRows_() };
+  return getOrFetchWithCache_('kengaku_v1', CACHE_TTL.kengaku_all, function() {
+    return { list: getKengakuRows_() };
+  });
 }
 
 // ===================================================================
@@ -2393,7 +2493,9 @@ function getUkakezanRows_() {
 
 // 売掛残物件の全件を返す（デフォルト＝未解決のみ／月絞り込みは画面側で行う）
 function getUkakezanAll_() {
-  return { list: getUkakezanRows_() };
+  return getOrFetchWithCache_('ukakezan_v1', CACHE_TTL.ukakezan_all, function() {
+    return { list: getUkakezanRows_() };
+  });
 }
 
 // ===================================================================
@@ -2838,6 +2940,9 @@ function archiveCurrentYearToHistory_() {
 
   const startRow = archiveWs.getLastRow() + 1;
   archiveWs.getRange(startRow, 1, data.length, FLAT_PERF_COLS.length).setValues(data);
+
+  // アーカイブ内容が変わったので、年度選択プルダウン用キャッシュを無効化する
+  cacheRemove_('fiscalyears_v1');
 
   return data.length;
 }
