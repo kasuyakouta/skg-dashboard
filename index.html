@@ -560,12 +560,18 @@ const ALL_DEPTS = [
   "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
 ];
 
-// 未来の空月ではなく「実績がある中で一番新しい月」をデフォルトにする
+// 月末の会議では「前月分」の実績を報告する運用のため、既定表示は常に前月にする
+function getDefaultReportYm_() {
+  const now = new Date();
+  const thisYm = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+  return shiftYmString(thisYm, -1);
+}
+
+// 未来の空月ではなく「前月（実績がある中で一番新しい月）」をデフォルトにする
 function pickDefaultYm(months) {
   if (!months.length) return null;
-  const now = new Date();
-  const todayYm = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
-  const pastOrCurrent = months.filter(function(m) { return m <= todayYm; }).sort().reverse();
+  const targetYm = getDefaultReportYm_();
+  const pastOrCurrent = months.filter(function(m) { return m <= targetYm; }).sort().reverse();
   return pastOrCurrent.length ? pastOrCurrent[0] : [...months].sort()[0];
 }
 
@@ -672,6 +678,10 @@ let actionsLoaded = false; // 次回アクションは月に依存しないた�
 let shinkiLoaded = false; // 新規案件は新規案件タブを開いた時だけ読み込む（遅延読み込み）
 let cachedAllFlatByYm = {}; // { ym: {perf, hr, ym} } 月ごとの取得結果を使い回すためのキャッシュ
 let perfDeptDefaultApplied = false; // 部署別実績タブの初期部署自動選択（ページ初回表示時のみ適用）
+// 新規案件・受注案件・施設見学は、会議で報告する「前月」を初回表示時のみ既定選択する
+let shinkiDefaultYmApplied = false;
+let juchuDefaultYmApplied = false;
+let kengakuDefaultYmApplied = false;
 
 // ============================================================
 // JSONP fetch（CORSを回避）
@@ -1221,7 +1231,13 @@ function populateShinkiYmSelect() {
     opt.value = ym; opt.textContent = ym;
     sel.appendChild(opt);
   });
-  if (yms.includes(current)) sel.value = current;
+  if (yms.includes(current)) {
+    sel.value = current;
+  } else if (!shinkiDefaultYmApplied) {
+    const defaultYm = getDefaultReportYm_();
+    if (yms.includes(defaultYm)) sel.value = defaultYm;
+  }
+  shinkiDefaultYmApplied = true;
 }
 
 // ============================================================
@@ -1329,7 +1345,13 @@ function populateJuchuYmSelect() {
   });
   if (prev && FALLBACK_MONTHS.includes(prev)) {
     sel.value = prev;
+  } else if (!juchuDefaultYmApplied) {
+    const defaultYm = getDefaultReportYm_();
+    if (FALLBACK_MONTHS.includes(defaultYm)) sel.value = defaultYm;
   }
+  juchuDefaultYmApplied = true;
+
+  onJuchuMonthChange();
 }
 
 function renderJuchuRanking() {
@@ -1539,10 +1561,14 @@ function populateKengakuYmSelect() {
     sel.appendChild(opt);
   });
 
-  // デフォルトは「すべて表示」。前回選択していた月があればそれを維持する
+  // 前回選択していた月があればそれを維持し、初回表示時のみ「前月」を既定にする
   if (prev && months.includes(prev)) {
     sel.value = prev;
+  } else if (!kengakuDefaultYmApplied) {
+    const defaultYm = getDefaultReportYm_();
+    if (months.includes(defaultYm)) sel.value = defaultYm;
   }
+  kengakuDefaultYmApplied = true;
 
   onKengakuMonthChange();
 }
