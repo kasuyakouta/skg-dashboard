@@ -8,14 +8,18 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
+    /* ブランドカラー：緑はアクセントとして要所のみで使う（背景には使わない） */
     --primary: #1D4B3E;
     --accent: #3E7C6F;
-    --bg: #F5F3EE;
+    /* ベース：白〜ごく薄いニュートラルグレー */
+    --bg: #F7F8FA;
     --card: #FFFFFF;
-    --text: #262421;
-    --muted: #78716A;
-    --muted2: #9C948A;
-    --border: #E4DFD5;
+    --bg-subtle: #F1F2F4;
+    --text: #1F2328;
+    --muted: #6B7280;
+    --muted2: #9CA3AF;
+    --border: #E5E7EB;
+    /* 状態色：成功/警告/危険は「淡い背景tint＋濃い文字色」の1パターンに統一する */
     --success: #3E7C6F;
     --success-bg: #EAF0EC;
     --success-text: #1D4B3E;
@@ -25,7 +29,20 @@
     --danger: #B3492E;
     --danger-bg: #FCEFE9;
     --danger-text: #8A3520;
-    --radius: 10px;
+    /* スペーシングスケール（8pxベース） */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    /* 角丸・影スケール */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius: var(--radius-md);
+    --shadow-sm: 0 1px 2px rgba(15,23,42,0.06);
+    --shadow-md: 0 4px 16px rgba(15,23,42,0.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
@@ -85,15 +102,49 @@
   @media (min-width: 1800px) { main { max-width: 1800px; } }
   @media (max-width: 768px)  { main { padding: 14px 16px; } }
 
-  /* タブ */
-  .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+  /* レイアウト：PC幅ではナビを左サイドバーに、狭い画面では現行の上部ピルタブのままにする */
+  .app-layout { display: flex; flex-direction: column; }
+  .tab-content-area { flex: 1; min-width: 0; }
+
+  /* タブ：実績系／人・レポート系の2グループに分け、アイコンで見分けやすくする */
+  .tabs { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-5); flex-wrap: wrap; }
+  .tab-group { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+  .tab-group-label { display: none; }
+  .tab-divider { width: 1px; align-self: stretch; min-height: 22px; background: var(--border); margin: 0 2px; }
+  @media (max-width: 768px) { .tab-divider { display: none; } }
   .tab {
+    display: inline-flex; align-items: center; gap: 6px;
     padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border);
     background: var(--card); color: var(--muted); cursor: pointer;
-    font-size: 13px; transition: all 0.2s;
+    font-size: 13px; transition: all 0.15s;
   }
+  .tab svg { flex-shrink: 0; }
   .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
   .tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+  /* PC幅（1024px以上）：ナビを左サイドバーとして縦並びに固定表示する */
+  @media (min-width: 1024px) {
+    .app-layout { flex-direction: row; align-items: flex-start; gap: var(--space-6); }
+    .tabs {
+      flex-direction: column; align-items: stretch; flex-wrap: nowrap;
+      width: 200px; flex-shrink: 0; gap: var(--space-1); margin-bottom: 0;
+      position: sticky; top: var(--sidebar-top, 96px);
+      max-height: calc(100vh - var(--sidebar-top, 96px) - var(--space-4));
+      overflow-y: auto;
+    }
+    .tab-group { flex-direction: column; align-items: stretch; width: 100%; gap: var(--space-1); }
+    .tab-group-label {
+      display: block; font-size: 11px; font-weight: 600; color: var(--muted2);
+      padding: 0 10px; margin: var(--space-2) 0 2px;
+    }
+    .tab-divider { width: 100%; height: 1px; min-height: 0; margin: var(--space-2) 0; align-self: auto; }
+    .tab {
+      border-radius: var(--radius-sm); border-color: transparent; background: transparent;
+      justify-content: flex-start; width: 100%; padding: 9px 10px;
+    }
+    .tab.active { background: var(--primary); color: #fff; }
+    .tab:hover:not(.active) { background: var(--success-bg); color: var(--accent); border-color: transparent; }
+  }
 
   /* タブコンテンツ */
   .tab-content { display: none; }
@@ -102,16 +153,18 @@
   /* カード */
   .card {
     background: var(--card); border-radius: var(--radius);
-    border: 1px solid var(--border); padding: 20px; margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    border: 1px solid var(--border); padding: var(--space-5); margin-bottom: var(--space-4);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.15s;
   }
+  .card:hover { box-shadow: var(--shadow-md); }
   .card h2 { font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 14px;
               padding-bottom: 8px; border-bottom: 2px solid var(--border); }
 
   /* KPIサマリーバー */
   .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
   .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
-  .kpi-card.kpi-danger { background: var(--danger-bg); border-color: transparent; }
+  .kpi-card.kpi-danger { background: var(--danger-bg); border-color: var(--danger); }
   .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
   .kpi-value { font-size: 32px; font-weight: 600; color: var(--text); }
   .kpi-value .kpi-unit { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 2px; }
@@ -137,8 +190,8 @@
   /* 前月比バッジ */
   .delta-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
   .delta-up   { background: var(--success-bg); color: var(--success-text); }
-  .delta-down { background: var(--danger); color: #fff; }
-  .delta-flat { background: #EDEAE1; color: #8A8377; }
+  .delta-down { background: var(--danger-bg); color: var(--danger-text); }
+  .delta-flat { background: var(--bg-subtle); color: var(--muted); }
 
   /* 次回までのアクション */
   .action-list { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
@@ -148,7 +201,7 @@
     display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px;
     border-radius: 8px; margin-right: 6px;
   }
-  .action-status-todo       { background: var(--danger); color: #fff; }
+  .action-status-todo       { background: var(--danger-bg); color: var(--danger-text); }
   .action-status-inprogress { background: var(--warning-bg); color: var(--warning-text); }
 
   /* 達成率バッジ */
@@ -159,7 +212,7 @@
   .rate-over { background: var(--success-bg); color: var(--success-text); }
   .rate-near { background: var(--warning-bg); color: var(--warning-text); }
   .rate-low  { background: var(--danger-bg); color: var(--danger-text); }
-  .rate-na   { background: #EDEAE1; color: #8A8377; }
+  .rate-na   { background: var(--bg-subtle); color: var(--muted); }
 
   /* 案件ステータスバッジ（新規案件タブ用） */
   .cat-badge {
@@ -168,10 +221,10 @@
   }
   .cat-badge.cat-good   { background: var(--success-bg); color: var(--success-text); }
   .cat-badge.cat-bad    { background: var(--danger-bg);  color: var(--danger-text); }
-  .cat-badge.cat-normal { background: #EDEAE1; color: #8A8377; }
+  .cat-badge.cat-normal { background: var(--bg-subtle); color: var(--muted); }
 
   /* プログレスバー（細く・意味で色分け） */
-  .progress-wrap { background: #EDEAE1; border-radius: 3px; height: 5px;
+  .progress-wrap { background: var(--bg-subtle); border-radius: 3px; height: 5px;
                    width: 100%; overflow: hidden; display: block; margin-top: 2px; }
   .progress-bar  { height: 100%; border-radius: 3px; transition: width 0.4s; }
 
@@ -188,7 +241,7 @@
     border-radius: 8px;
     border: 1px solid var(--border);
     border-left: 4px solid var(--accent);
-    background: #FAF8F4; overflow: hidden;
+    background: var(--bg-subtle); overflow: hidden;
   }
   /* 部署（ユニット）列がある部署だけ、列を1つ追加したレイアウトにする */
   .hr-item.with-unit, .hr-list-head.with-unit { grid-template-columns: 90px 90px 140px 1fr 90px 85px; }
@@ -219,7 +272,7 @@
   /* 人事報告の写真サムネイル・拡大表示 */
   .hr-photo-thumb {
     width: 32px; height: 32px; object-fit: cover; border-radius: 4px;
-    margin-right: 4px; cursor: zoom-in; border: 1px solid var(--border); background: #EDEAE1;
+    margin-right: 4px; cursor: zoom-in; border: 1px solid var(--border); background: var(--bg-subtle);
   }
   .lightbox-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
@@ -311,18 +364,27 @@
 </div>
 
 <main>
+  <div class="app-layout">
   <div class="tabs">
-    <div class="tab active" onclick="showTab('tab-summary', this)">全部署サマリー</div>
-    <div class="tab" onclick="showTab('tab-report', this)">AIレポート</div>
-    <div class="tab" onclick="showTab('tab-hr', this)">人事コメント</div>
-    <div class="tab" onclick="showTab('tab-perf', this)">部署別実績</div>
-    <div class="tab" onclick="openShinkiTab(this)">新規案件</div>
-    <div class="tab" onclick="openJuchuTab(this)">受注案件</div>
-    <div class="tab" onclick="openKengakuTab(this)">施設見学</div>
-    <div class="tab" onclick="openUkakezanTab(this)">売掛残物件</div>
-    <div class="tab" onclick="openFuelTab(this)">燃料</div>
+    <div class="tab-group">
+      <div class="tab-group-label">実績データ</div>
+      <div class="tab active" onclick="showTab('tab-summary', this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>全部署サマリー</div>
+      <div class="tab" onclick="showTab('tab-perf', this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="6"/><line x1="19" y1="20" x2="19" y2="15"/></svg>部署別実績</div>
+      <div class="tab" onclick="openShinkiTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>新規案件</div>
+      <div class="tab" onclick="openJuchuTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="8.5 12.5 11 15 15.5 9"/></svg>受注案件</div>
+      <div class="tab" onclick="openKengakuTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><line x1="9" y1="7" x2="9" y2="7"/><line x1="15" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="9" y2="11"/><line x1="15" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="9" y2="15"/><line x1="15" y1="15" x2="15" y2="15"/></svg>施設見学</div>
+      <div class="tab" onclick="openUkakezanTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14.5" r="1.6"/></svg>売掛残物件</div>
+      <div class="tab" onclick="openFuelTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="10" height="17" rx="1"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 8h3l3 3v6a1.5 1.5 0 0 1-3 0v-2a1 1 0 0 0-1-1h-2"/></svg>燃料</div>
+    </div>
+    <div class="tab-divider"></div>
+    <div class="tab-group">
+      <div class="tab-group-label">レポート</div>
+      <div class="tab" onclick="showTab('tab-report', this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>AIレポート</div>
+      <div class="tab" onclick="showTab('tab-hr', this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.4 8.5 8.5 0 0 1-4-1L3 20l1.1-3.6A8.4 8.4 0 1 1 21 11.5z"/></svg>人事コメント</div>
+    </div>
   </div>
 
+  <div class="tab-content-area">
   <!-- サマリータブ -->
   <div id="tab-summary" class="tab-content active">
     <div id="kpi-row" class="kpi-row"></div>
@@ -460,6 +522,8 @@
   <!-- AIレポートタブ -->
   <div id="tab-report" class="tab-content">
     <div id="report-body"><div class="empty">この月のAIレポートはまだ生成されていません</div></div>
+  </div>
+  </div>
   </div>
 </main>
 
@@ -2467,7 +2531,7 @@ function makeCard(g) {
     else if (rate >= 80) badgeCls = 'rate-near';
     else badgeCls = 'rate-low';
   }
-  return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:#FAF8F4;margin-bottom:8px">'
+  return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);margin-bottom:8px">'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">' + g.item + '（' + g.metric + '）</div>'
     + '<div style="display:flex;justify-content:space-between;align-items:center">'
     + '<div>'
@@ -2509,6 +2573,17 @@ function fmtNum(n) {
 function esc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+// PCサイドバー表示時、固定表示のヘッダー＋コントロールバーの高さ分だけサイドバーの張り付き位置(top)をずらす
+function updateSidebarOffset_() {
+  const header = document.querySelector('header');
+  const controls = document.querySelector('.controls');
+  const offset = (header ? header.offsetHeight : 0) + (controls ? controls.offsetHeight : 0);
+  document.documentElement.style.setProperty('--sidebar-top', offset + 'px');
+}
+window.addEventListener('resize', updateSidebarOffset_);
+window.addEventListener('load', updateSidebarOffset_);
+updateSidebarOffset_();
 
 // 初期化
 init();
