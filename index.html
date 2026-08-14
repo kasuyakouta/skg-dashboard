@@ -567,12 +567,18 @@ function getDefaultReportYm_() {
   return shiftYmString(thisYm, -1);
 }
 
+// 年月リストの中から、targetYm以下で一番新しい月を選ぶ（無ければ一番古い月）
+// 新規案件・施設見学など「前月分がまだ登録されていない」ケースでも、
+// 空にせず実績がある直近の月を既定表示にするために使う。
+function pickNearestPastYm_(yms, targetYm) {
+  if (!yms.length) return null;
+  const pastOrCurrent = yms.filter(function(m) { return m <= targetYm; }).sort().reverse();
+  return pastOrCurrent.length ? pastOrCurrent[0] : [...yms].sort()[0];
+}
+
 // 未来の空月ではなく「前月（実績がある中で一番新しい月）」をデフォルトにする
 function pickDefaultYm(months) {
-  if (!months.length) return null;
-  const targetYm = getDefaultReportYm_();
-  const pastOrCurrent = months.filter(function(m) { return m <= targetYm; }).sort().reverse();
-  return pastOrCurrent.length ? pastOrCurrent[0] : [...months].sort()[0];
+  return pickNearestPastYm_(months, getDefaultReportYm_());
 }
 
 // 年月セレクトを1つ前/次の月へ移動する（前月・翌月ボタン用）
@@ -1234,8 +1240,9 @@ function populateShinkiYmSelect() {
   if (yms.includes(current)) {
     sel.value = current;
   } else if (!shinkiDefaultYmApplied) {
-    const defaultYm = getDefaultReportYm_();
-    if (yms.includes(defaultYm)) sel.value = defaultYm;
+    // ちょうど前月のデータがまだ無くても「すべて」にはせず、実績がある直近の月を選ぶ
+    const nearestYm = pickNearestPastYm_(yms, getDefaultReportYm_());
+    if (nearestYm) sel.value = nearestYm;
   }
   shinkiDefaultYmApplied = true;
 }
@@ -1562,11 +1569,12 @@ function populateKengakuYmSelect() {
   });
 
   // 前回選択していた月があればそれを維持し、初回表示時のみ「前月」を既定にする
+  // ちょうど前月のデータがまだ無くても「すべて表示」にはせず、実績がある直近の月を選ぶ
   if (prev && months.includes(prev)) {
     sel.value = prev;
   } else if (!kengakuDefaultYmApplied) {
-    const defaultYm = getDefaultReportYm_();
-    if (months.includes(defaultYm)) sel.value = defaultYm;
+    const nearestYm = pickNearestPastYm_(months, getDefaultReportYm_());
+    if (nearestYm) sel.value = nearestYm;
   }
   kengakuDefaultYmApplied = true;
 
