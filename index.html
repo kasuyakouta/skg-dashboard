@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
 <title>SKグループ 営業会議ダッシュボード</title>
+<!-- Webフォント（IBM Plex Sans JP / Noto Sans JP）。オフライン時は取得できず、
+     bodyのフォールバック（Hiragino/Yu Gothic等のOS標準）にそのまま切り替わる -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -45,7 +50,7 @@
     --shadow-md: 0 4px 16px rgba(15,23,42,0.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  body { font-family: "IBM Plex Sans JP", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
          background: var(--bg); color: var(--text); font-size: 14px; }
 
   /* ヘッダー */
@@ -2379,25 +2384,27 @@ function drawChart(labels, targets, actuals, dept, chartLabel, unit) {
       labels: labels,
       datasets: [
         {
+          // 目標はあくまで参考線のため、ブランド色ではなくニュートラルなグレーにする
           label: '目標',
           data: targets,
-          borderColor: 'rgba(46,134,193,0.8)',
+          borderColor: '#9CA3AF',
           backgroundColor: 'transparent',
           borderWidth: 2,
           borderDash: [6, 4],
-          pointBackgroundColor: 'rgba(46,134,193,0.8)',
+          pointBackgroundColor: '#9CA3AF',
           pointRadius: 3,
           tension: 0.3,
           spanGaps: true
         },
         {
+          // 実績はこのチャートの主役なので、ブランドアクセントの緑を使う
           label: '実績',
           data: actuals,
-          borderColor: '#C98A2B',
-          backgroundColor: 'rgba(201,138,43,0.10)',
+          borderColor: '#3E7C6F',
+          backgroundColor: 'rgba(62,124,111,0.12)',
           borderWidth: 2.5,
           borderDash: [],
-          pointBackgroundColor: '#C98A2B',
+          pointBackgroundColor: '#3E7C6F',
           pointRadius: 4,
           tension: 0.3,
           fill: true,
