@@ -82,6 +82,25 @@
     color: var(--text);
   }
 
+  /* ボタン：共通の見た目をクラス化し、各所のインラインstyle重複をなくす */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: var(--card); color: var(--muted); cursor: pointer;
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* 枠線・背景を持たない、文字だけのテキストリンク型ボタン（折りたたみの開閉など） */
+  .btn-ghost {
+    border-color: transparent; background: transparent; padding: 4px 2px;
+    color: var(--accent); font-weight: 600;
+  }
+  .btn-ghost:hover { color: var(--primary); border-color: transparent; }
+
   /* ローディングオーバーレイ */
   #loading-overlay {
     display: none; position: fixed; inset: 0;
@@ -168,12 +187,21 @@
 
   /* KPIサマリーバー */
   .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
-  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
-  .kpi-card.kpi-danger { background: var(--danger-bg); border-color: var(--danger); }
-  .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .kpi-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px; transition: box-shadow 0.15s;
+  }
+  /* 「要注意」のように今すぐ見るべき指標は、枠を太く・影を強めて優先度を視覚的に出す */
+  .kpi-card.kpi-danger { background: var(--danger-bg); border-color: var(--danger); border-width: 2px; box-shadow: var(--shadow-sm); }
+  .kpi-card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--muted); }
+  .kpi-card-head svg { flex-shrink: 0; }
+  .kpi-danger .kpi-card-head { color: var(--danger-text); }
+  .kpi-label { font-size: 12px; color: inherit; }
   .kpi-value { font-size: 32px; font-weight: 600; color: var(--text); }
+  .kpi-danger .kpi-value { font-size: 34px; }
   .kpi-value .kpi-unit { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 2px; }
-  .kpi-danger .kpi-label, .kpi-danger .kpi-value { color: var(--danger-text); }
+  .kpi-danger .kpi-value { color: var(--danger-text); }
+  .kpi-danger .kpi-value .kpi-unit { color: var(--danger-text); opacity: 0.75; }
 
   /* 部署サマリーカード */
   .dept-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-bottom: 10px; }
@@ -320,8 +348,32 @@
   .item-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
   .item-tab.default-tab { font-weight: 600; }
 
-  /* 空状態 */
-  .empty { text-align: center; color: var(--muted); padding: 40px; font-size: 13px; }
+  /* 空状態：テキストのみだと素っ気ないので、上に軽量な線画アイコンを添える */
+  .empty {
+    text-align: center; color: var(--muted); font-size: 13px;
+    padding: 46px 20px 32px;
+    background-repeat: no-repeat; background-position: center 6px; background-size: 32px 32px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 9l2-5h14l2 5'/%3E%3Cpath d='M3 9v9a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9'/%3E%3Cpath d='M3 9h18'/%3E%3Cpath d='M9 13h6'/%3E%3C/svg%3E");
+  }
+  /* 読み込み中は箱アイコンの代わりに小さいスピナーを出す */
+  .empty.empty-loading { background-image: none; padding-top: 20px; }
+  .spinner-sm {
+    display: inline-block; width: 20px; height: 20px; margin-bottom: 10px;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+
+  /* データテーブル共通スタイル：受注案件・施設見学・売掛残物件などのベタ書きを統一 */
+  .table-scroll { overflow-x: auto; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data-table.compact { font-size: 13px; }
+  .data-table th, .data-table td { padding: 6px 8px; text-align: left; }
+  .data-table thead tr { border-bottom: 1px solid var(--border); }
+  .data-table thead th { font-size: 11px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .data-table tbody tr { border-bottom: 1px solid var(--border); }
+  .data-table tbody tr:hover { background: var(--bg-subtle); }
+  .data-table .num { text-align: right; }
+  .data-table.align-top tbody tr { vertical-align: top; }
 
   /* AIレポート */
   .report-card { margin-bottom: 16px; }
@@ -355,17 +407,10 @@
 
 <div class="controls">
   <label>対象年月</label>
-  <button onclick="shiftYmSelect(-1)" title="前月へ" style="
-    padding:6px 10px; border-radius:6px; border:1px solid var(--border);
-    background:#fff; cursor:pointer; font-size:13px; color:var(--muted);">◀ 前月</button>
+  <button class="btn" onclick="shiftYmSelect(-1)" title="前月へ">◀ 前月</button>
   <select id="ym-select" onchange="loadAll()"><option value="">読み込み中...</option></select>
-  <button onclick="shiftYmSelect(1)" title="翌月へ" style="
-    padding:6px 10px; border-radius:6px; border:1px solid var(--border);
-    background:#fff; cursor:pointer; font-size:13px; color:var(--muted);">翌月 ▶</button>
-  <button onclick="loadAll(true)" title="最新のフラットログを再読み込み" style="
-    padding:6px 12px; border-radius:6px; border:1px solid var(--border);
-    background:#fff; cursor:pointer; font-size:13px; color:var(--muted);
-    transition:all 0.2s;">🔄 再読み込み</button>
+  <button class="btn" onclick="shiftYmSelect(1)" title="翌月へ">翌月 ▶</button>
+  <button class="btn" onclick="loadAll(true)" title="最新のフラットログを再読み込み">🔄 再読み込み</button>
 </div>
 
 <main>
@@ -919,21 +964,28 @@ function renderSummary(DEPTS_ARG) {
     : null;
   const hrCount = (typeof cachedHr !== 'undefined') ? cachedHr.filter(function(r){ return r.content; }).length : 0;
 
+  const KPI_ICON = {
+    achieved: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="8.5 12.5 11 15 15.5 9"/></svg>',
+    rate: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>',
+    danger: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2 20h20z"/><line x1="12" y1="10" x2="12" y2="15"/><line x1="12" y1="17.5" x2="12" y2="17.5"/></svg>',
+    hr: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.4 8.5 8.5 0 0 1-4-1L3 20l1.1-3.6A8.4 8.4 0 1 1 21 11.5z"/></svg>'
+  };
+
   kpiRow.innerHTML =
     '<div class="kpi-card">'
-      + '<div class="kpi-label">達成部署数</div>'
+      + '<div class="kpi-card-head">' + KPI_ICON.achieved + '<span class="kpi-label">達成部署数</span></div>'
       + '<div class="kpi-value">' + achievedCount + '<span class="kpi-unit"> / ' + withRate.length + '</span></div>'
     + '</div>'
     + '<div class="kpi-card">'
-      + '<div class="kpi-label">平均達成率</div>'
+      + '<div class="kpi-card-head">' + KPI_ICON.rate + '<span class="kpi-label">平均達成率</span></div>'
       + '<div class="kpi-value">' + (avgRate !== null ? avgRate : '-') + '<span class="kpi-unit">%</span></div>'
     + '</div>'
     + '<div class="kpi-card' + (dangerCount > 0 ? ' kpi-danger' : '') + '">'
-      + '<div class="kpi-label">要注意（80%未満）</div>'
+      + '<div class="kpi-card-head">' + KPI_ICON.danger + '<span class="kpi-label">要注意（80%未満）</span></div>'
       + '<div class="kpi-value">' + dangerCount + '<span class="kpi-unit"> 部署</span></div>'
     + '</div>'
     + '<div class="kpi-card">'
-      + '<div class="kpi-label">人事コメント</div>'
+      + '<div class="kpi-card-head">' + KPI_ICON.hr + '<span class="kpi-label">人事コメント</span></div>'
       + '<div class="kpi-value">' + hrCount + '<span class="kpi-unit"> 件</span></div>'
     + '</div>';
 
@@ -1216,7 +1268,7 @@ async function openShinkiTab(el) {
     return;
   }
 
-  document.getElementById('shinki-body').innerHTML = '<div class="empty">読み込み中...</div>';
+  document.getElementById('shinki-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
     const url = withKey(GAS_URL + '?type=shinki_anken');
     const data = await fetchJSONP(url);
@@ -1332,7 +1384,7 @@ async function openJuchuTab(el) {
     return;
   }
 
-  document.getElementById('juchu-ranking-body').innerHTML = '<div class="empty">読み込み中...</div>';
+  document.getElementById('juchu-ranking-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
     const url = withKey(GAS_URL + '?type=juchu_ranking');
     const data = await fetchJSONP(url);
@@ -1436,19 +1488,19 @@ function toggleJuchuPerson(idx) {
     + '<h3 style="margin:0;">' + esc(r.person) + 'さんの受注案件（年度累計）</h3>'
     + '<span style="font-weight:700;color:var(--primary);">合計 ' + fmtNum(r.total) + '円</span>'
     + '</div>'
-    + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">'
-    + '<thead><tr style="border-bottom:1px solid var(--border);text-align:left;">'
-    + '<th style="padding:6px 8px;">月</th><th style="padding:6px 8px;">物件名</th>'
-    + '<th style="padding:6px 8px;">品目</th><th style="padding:6px 8px;">対応日</th>'
-    + '<th style="padding:6px 8px;text-align:right;">金額</th></tr></thead><tbody>';
+    + '<div class="table-scroll"><table class="data-table">'
+    + '<thead><tr>'
+    + '<th>月</th><th>物件名</th>'
+    + '<th>品目</th><th>対応日</th>'
+    + '<th class="num">金額</th></tr></thead><tbody>';
 
   r.cases.forEach(function(c) {
-    html += '<tr style="border-bottom:1px solid var(--border);">'
-      + '<td style="padding:6px 8px;">' + esc(c.ym) + '</td>'
-      + '<td style="padding:6px 8px;">' + esc(c.name) + '</td>'
-      + '<td style="padding:6px 8px;">' + esc(c.item) + '</td>'
-      + '<td style="padding:6px 8px;">' + esc(c.date) + '</td>'
-      + '<td style="padding:6px 8px;text-align:right;">' + fmtNum(c.amount) + '円</td>'
+    html += '<tr>'
+      + '<td>' + esc(c.ym) + '</td>'
+      + '<td>' + esc(c.name) + '</td>'
+      + '<td>' + esc(c.item) + '</td>'
+      + '<td>' + esc(c.date) + '</td>'
+      + '<td class="num">' + fmtNum(c.amount) + '円</td>'
       + '</tr>';
   });
 
@@ -1472,7 +1524,7 @@ async function onJuchuMonthChange() {
 
   rankingSection.style.display = 'none';
   body.style.display = '';
-  body.innerHTML = '<div class="empty">読み込み中...</div>';
+  body.innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
     if (!cachedJuchuMonthlyByYm[ym]) {
       const url = withKey(GAS_URL + '?type=juchu_monthly&ym=' + encodeURIComponent(ym));
@@ -1513,18 +1565,18 @@ function renderJuchuMonthly(data) {
 
     html += '<div class="card">'
       + '<h2>主な受注案件<span style="float:right;font-size:14px;color:var(--muted);">合計 ' + fmtNum(total) + '円</span></h2>'
-      + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">'
-      + '<thead><tr style="border-bottom:1px solid var(--border);text-align:left;">'
-      + '<th style="padding:6px 8px;">物件名</th><th style="padding:6px 8px;">品目</th>'
-      + '<th style="padding:6px 8px;">対応日</th><th style="padding:6px 8px;text-align:right;">金額</th>'
-      + '<th style="padding:6px 8px;">担当者</th></tr></thead><tbody>';
+      + '<div class="table-scroll"><table class="data-table">'
+      + '<thead><tr>'
+      + '<th>物件名</th><th>品目</th>'
+      + '<th>対応日</th><th class="num">金額</th>'
+      + '<th>担当者</th></tr></thead><tbody>';
     juchu.forEach(function(r) {
-      html += '<tr style="border-bottom:1px solid var(--border);">'
-        + '<td style="padding:6px 8px;">' + esc(r.name) + '</td>'
-        + '<td style="padding:6px 8px;">' + esc(r.item) + '</td>'
-        + '<td style="padding:6px 8px;">' + esc(r.date) + '</td>'
-        + '<td style="padding:6px 8px;text-align:right;">' + fmtNum(r.amount) + '円</td>'
-        + '<td style="padding:6px 8px;">' + esc(r.person) + '</td>'
+      html += '<tr>'
+        + '<td>' + esc(r.name) + '</td>'
+        + '<td>' + esc(r.item) + '</td>'
+        + '<td>' + esc(r.date) + '</td>'
+        + '<td class="num">' + fmtNum(r.amount) + '円</td>'
+        + '<td>' + esc(r.person) + '</td>'
         + '</tr>';
     });
     html += '</tbody></table></div></div>';
@@ -1547,7 +1599,7 @@ async function openKengakuTab(el) {
     return;
   }
 
-  document.getElementById('kengaku-body').innerHTML = '<div class="empty">読み込み中...</div>';
+  document.getElementById('kengaku-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
     const url = withKey(GAS_URL + '?type=kengaku_all');
     const data = await fetchJSONP(url);
@@ -1610,19 +1662,19 @@ function renderKengaku(list) {
   });
 
   let html = '<div class="card"><h2>施設見学一覧（' + sorted.length + '件）</h2>'
-    + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">'
-    + '<thead><tr style="border-bottom:1px solid var(--border);text-align:left;">'
-    + '<th style="padding:6px 8px;">月</th><th style="padding:6px 8px;">見学日</th>'
-    + '<th style="padding:6px 8px;">対象企業名</th><th style="padding:6px 8px;">見学施設</th>'
-    + '<th style="padding:6px 8px;">担当者</th></tr></thead><tbody>';
+    + '<div class="table-scroll"><table class="data-table">'
+    + '<thead><tr>'
+    + '<th>月</th><th>見学日</th>'
+    + '<th>対象企業名</th><th>見学施設</th>'
+    + '<th>担当者</th></tr></thead><tbody>';
 
   sorted.forEach(function(r) {
-    html += '<tr style="border-bottom:1px solid var(--border);">'
-      + '<td style="padding:6px 8px;">' + esc(r.ym) + '</td>'
-      + '<td style="padding:6px 8px;">' + esc(r.date) + '</td>'
-      + '<td style="padding:6px 8px;">' + esc(r.company) + '</td>'
-      + '<td style="padding:6px 8px;">' + esc(r.facility) + '</td>'
-      + '<td style="padding:6px 8px;">' + esc(r.person) + '</td>'
+    html += '<tr>'
+      + '<td>' + esc(r.ym) + '</td>'
+      + '<td>' + esc(r.date) + '</td>'
+      + '<td>' + esc(r.company) + '</td>'
+      + '<td>' + esc(r.facility) + '</td>'
+      + '<td>' + esc(r.person) + '</td>'
       + '</tr>';
   });
 
@@ -1644,7 +1696,7 @@ async function openUkakezanTab(el) {
     return;
   }
 
-  document.getElementById('ukakezan-body').innerHTML = '<div class="empty">読み込み中...</div>';
+  document.getElementById('ukakezan-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
     const url = withKey(GAS_URL + '?type=ukakezan_all');
     const data = await fetchJSONP(url);
@@ -1712,18 +1764,18 @@ function renderUkakezan(list, isDefaultView) {
   const title = isDefaultView ? '現在未解決の案件（' + sorted.length + '件）' : '指摘された案件（' + sorted.length + '件）';
 
   let html = '<div class="card"><h2>' + title + '</h2>'
-    + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
-    + '<thead><tr style="border-bottom:1px solid var(--border);text-align:left;">'
-    + '<th style="padding:6px 8px;white-space:nowrap;">指摘日</th>'
-    + '<th style="padding:6px 8px;white-space:nowrap;">コード</th>'
-    + '<th style="padding:6px 8px;white-space:nowrap;">顧客名</th>'
-    + '<th style="padding:6px 8px;white-space:nowrap;">請求日</th>'
-    + '<th style="padding:6px 8px;min-width:160px;">理由</th>'
-    + '<th style="padding:6px 8px;min-width:200px;">返答</th>'
-    + '<th style="padding:6px 8px;min-width:200px;">営業確認</th>'
-    + '<th style="padding:6px 8px;min-width:160px;">入金確認</th>'
-    + '<th style="padding:6px 8px;white-space:nowrap;">結果</th>'
-    + '<th style="padding:6px 8px;min-width:160px;">備考</th>'
+    + '<div class="table-scroll"><table class="data-table compact align-top">'
+    + '<thead><tr>'
+    + '<th>指摘日</th>'
+    + '<th>コード</th>'
+    + '<th>顧客名</th>'
+    + '<th>請求日</th>'
+    + '<th style="min-width:160px;">理由</th>'
+    + '<th style="min-width:200px;">返答</th>'
+    + '<th style="min-width:200px;">営業確認</th>'
+    + '<th style="min-width:160px;">入金確認</th>'
+    + '<th>結果</th>'
+    + '<th style="min-width:160px;">備考</th>'
     + '</tr></thead><tbody>';
 
   sorted.forEach(function(r) {
@@ -1731,17 +1783,17 @@ function renderUkakezan(list, isDefaultView) {
       ? '<span class="cat-badge cat-good">済</span>'
       : '<span class="cat-badge cat-bad">' + (r.result ? esc(r.result) : '未解決') + '</span>';
 
-    html += '<tr style="border-bottom:1px solid var(--border);vertical-align:top;">'
-      + '<td style="padding:6px 8px;white-space:nowrap;">' + esc(r.flagDate) + '</td>'
-      + '<td style="padding:6px 8px;white-space:nowrap;">' + esc(r.code) + '</td>'
-      + '<td style="padding:6px 8px;font-weight:600;white-space:nowrap;">' + esc(r.customer) + '</td>'
-      + '<td style="padding:6px 8px;white-space:nowrap;">' + esc(r.billing) + '</td>'
-      + '<td style="padding:6px 8px;white-space:pre-wrap;">' + esc(r.reason) + '</td>'
-      + '<td style="padding:6px 8px;white-space:pre-wrap;">' + esc(r.response) + '</td>'
-      + '<td style="padding:6px 8px;white-space:pre-wrap;">' + esc(r.salesCheck) + '</td>'
-      + '<td style="padding:6px 8px;white-space:pre-wrap;">' + esc(r.payCheck) + '</td>'
-      + '<td style="padding:6px 8px;white-space:nowrap;">' + statusBadge + '</td>'
-      + '<td style="padding:6px 8px;white-space:pre-wrap;color:var(--muted);">' + esc(r.note) + '</td>'
+    html += '<tr>'
+      + '<td style="white-space:nowrap;">' + esc(r.flagDate) + '</td>'
+      + '<td style="white-space:nowrap;">' + esc(r.code) + '</td>'
+      + '<td style="font-weight:600;white-space:nowrap;">' + esc(r.customer) + '</td>'
+      + '<td style="white-space:nowrap;">' + esc(r.billing) + '</td>'
+      + '<td style="white-space:pre-wrap;">' + esc(r.reason) + '</td>'
+      + '<td style="white-space:pre-wrap;">' + esc(r.response) + '</td>'
+      + '<td style="white-space:pre-wrap;">' + esc(r.salesCheck) + '</td>'
+      + '<td style="white-space:pre-wrap;">' + esc(r.payCheck) + '</td>'
+      + '<td style="white-space:nowrap;">' + statusBadge + '</td>'
+      + '<td style="white-space:pre-wrap;color:var(--muted);">' + esc(r.note) + '</td>'
       + '</tr>';
   });
 
@@ -2547,8 +2599,7 @@ function renderPerfDetail() {
     if (detailGs.length > 0) {
       const uid = dept.replace(/[^a-zA-Z0-9]/g, '_');
       html += '<div style="margin-top:12px">'
-        + '<button onclick="toggleDetail(\'' + uid + '\')" id="btn_' + uid + '" style="'
-        + 'font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 0;">'
+        + '<button class="btn-ghost" onclick="toggleDetail(\'' + uid + '\')" id="btn_' + uid + '" style="font-size:12px;">'
         + '▶ その他の指標を表示</button>'
         + '<div id="detail_' + uid + '" style="display:none;margin-top:10px;">'
         + '<div class="grid-2">';
