@@ -314,6 +314,14 @@
     width: 32px; height: 32px; object-fit: cover; border-radius: 4px;
     margin-right: 4px; cursor: zoom-in; border: 1px solid var(--border); background: var(--bg-subtle);
   }
+  /* 写真欄に画像以外のURL（資料・記事など）が入っていた場合はリンクチップとして表示する */
+  .hr-link-chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 4px; margin-right: 4px;
+    text-decoration: none; font-size: 15px; line-height: 1;
+    background: var(--bg-subtle); border: 1px solid var(--border); color: var(--accent);
+  }
+  .hr-link-chip:hover { background: var(--success-bg); border-color: var(--accent); }
   .lightbox-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
     z-index: 300; align-items: center; justify-content: center; cursor: zoom-out;
@@ -1140,7 +1148,7 @@ function renderHr() {
       + '<div style="font-weight:600;color:var(--primary);margin-bottom:8px;font-size:14px">◾ ' + esc(dept) + '</div>'
       + '<div class="hr-list-head' + gridCls + '">'
         + (hasUnit ? '<span>部署</span>' : '')
-        + '<span>対象者</span><span>カテゴリ</span><span>内容</span><span>対応状況</span><span>写真</span>'
+        + '<span>対象者</span><span>カテゴリ</span><span>内容</span><span>対応状況</span><span>写真/リンク</span>'
       + '</div>'
       + '<div class="hr-list">';
     items.forEach(item => {
@@ -1149,7 +1157,11 @@ function renderHr() {
       const photoUrls = [item.photo1, item.photo2, item.photo3].filter(Boolean);
       const photosHtml = photoUrls.length
         ? photoUrls.map(function(url) {
-            return '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy">';
+            if (isImageUrl_(url)) {
+              return '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy">';
+            }
+            // 画像以外のURL（資料・記事など）は新しいタブで開くリンクチップとして表示する
+            return '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="hr-link-chip" title="' + esc(url) + '">🔗</a>';
           }).join('')
         : '<span style="color:var(--muted);font-size:12px;">-</span>';
       html += '<div class="hr-item ' + cls + gridCls + '">'
@@ -1158,7 +1170,7 @@ function renderHr() {
         + '<div class="hr-field"><span class="hr-field-label">カテゴリ</span><span class="hr-field-value hr-fit">' + esc(item.category || '未分類') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">内容</span><span class="hr-field-value">' + renderHrContent_(item) + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">対応状況</span><span class="hr-field-value ' + statusCls + '">' + (item.status ? esc(item.status) : '-') + '</span></div>'
-        + '<div class="hr-field"><span class="hr-field-label">写真</span><span class="hr-field-value">' + photosHtml + '</span></div>'
+        + '<div class="hr-field"><span class="hr-field-label">写真/リンク</span><span class="hr-field-value">' + photosHtml + '</span></div>'
         + '</div>';
     });
     html += '</div></div>';
@@ -1191,6 +1203,16 @@ window.addEventListener('resize', function() {
     if (body) fitHrText_(body);
   }, 150);
 });
+
+// 人事報告の「写真」欄には、画像だけでなく資料・記事等のリンクも入れられるようにする。
+// 拡張子やGoogle Driveの画像用URLパターンで簡易判定し、画像ならサムネイル、それ以外はリンクとして表示する。
+function isImageUrl_(url) {
+  if (!url) return false;
+  if (/\.(jpe?g|png|gif|webp|bmp|svg)(\?|#|$)/i.test(url)) return true;
+  if (/drive\.google\.com\/thumbnail/i.test(url)) return true;
+  if (/drive\.google\.com\/uc\?/i.test(url)) return true;
+  return false;
+}
 
 // 人事報告の写真を拡大表示する
 function openLightbox(url) {
