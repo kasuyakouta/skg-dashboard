@@ -322,6 +322,16 @@
     background: var(--bg-subtle); border: 1px solid var(--border); color: var(--accent);
   }
   .hr-link-chip:hover { background: var(--success-bg); border-color: var(--accent); }
+  /* 写真/リンクの1件ずつを囲み、右上に削除バッジを重ねるためのラッパー */
+  .hr-photo-wrap { position: relative; display: inline-block; margin-right: 4px; }
+  .hr-photo-wrap .hr-photo-thumb, .hr-photo-wrap .hr-link-chip { margin-right: 0; }
+  .hr-photo-del {
+    position: absolute; top: -6px; right: -6px; width: 15px; height: 15px;
+    border-radius: 50%; background: var(--danger); color: #fff;
+    font-size: 10px; line-height: 15px; text-align: center; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .hr-photo-del:hover { background: var(--danger-text); }
   /* ダッシュボードから直接写真を追加するボタン（クリック/ドラッグ&ドロップ両対応） */
   .hr-photo-add {
     display: inline-flex; align-items: center; justify-content: center;
@@ -1164,19 +1174,25 @@ function renderHr() {
     items.forEach(item => {
       const cls = catClass[item.category] || '';
       const statusCls = item.status ? 'hr-status-' + item.status : '';
+      // この行の写真アップロード/削除ボタンから、後で対象のitemを引けるよう登録しておく
+      const targetIdx = window._hrPhotoTargets.length;
+      window._hrPhotoTargets.push(item);
+
       const photoSlots = [item.photo1, item.photo2, item.photo3];
-      const filledHtml = photoSlots.filter(Boolean).map(function(url) {
+      const filledHtml = photoSlots.map(function(url, slot) {
+        if (!url) return '';
+        const delBtn = '<span class="hr-photo-del" title="削除" onclick="event.stopPropagation(); deleteHrPhoto_(' + targetIdx + ', ' + slot + ')">×</span>';
         if (isImageUrl_(url)) {
-          return '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy">';
+          return '<span class="hr-photo-wrap">' + delBtn
+            + '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy"></span>';
         }
         // 画像以外のURL（資料・記事など）は新しいタブで開くリンクチップとして表示する
-        return '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="hr-link-chip" title="' + esc(url) + '">🔗</a>';
+        return '<span class="hr-photo-wrap">' + delBtn
+          + '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="hr-link-chip" title="' + esc(url) + '">🔗</a></span>';
       }).join('');
       // 空きスロットがあれば、ダッシュボード上から直接写真を追加できるボタン（クリック/ドラッグ&ドロップ両対応）を出す
       let addHtml = '';
       if (photoSlots.filter(Boolean).length < 3) {
-        const targetIdx = window._hrPhotoTargets.length;
-        window._hrPhotoTargets.push(item);
         addHtml = '<label class="hr-photo-add" id="hr-photo-add-' + targetIdx + '" title="写真を追加（クリックまたはドラッグ&ドロップ）"'
           + ' ondragover="event.preventDefault();" ondrop="onHrPhotoDrop_(event, ' + targetIdx + ')">'
           + '+<input type="file" accept="image/*" style="display:none" onchange="onHrPhotoInputChange_(this, ' + targetIdx + ')"></label>';
@@ -1327,6 +1343,39 @@ function resizeImageForUpload_(file, maxSize) {
     reader.onerror = function() { reject(new Error('ファイルの読み込みに失敗しました')); };
     reader.readAsDataURL(file);
   });
+}
+
+// 人事コメントの写真を削除する（該当セルを空にし、GAS側でDrive上のファイルも削除する）
+function deleteHrPhoto_(idx, slot) {
+  const item = window._hrPhotoTargets && window._hrPhotoTargets[idx];
+  if (!item) return;
+  const photoKey = 'photo' + (slot + 1);
+  const url = item[photoKey];
+  if (!url) return;
+  if (!confirm('この写真を削除しますか？この操作は元に戻せません。')) return;
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'delete_photo', key: ACCESS_KEY,
+      dept: item.dept, ym: item.ym, unit: item.unit || '',
+      category: item.category || '', targetPerson: item.targetPerson || '',
+      content: item.content || '', status: item.status || '',
+      photoUrl: url
+    })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        item[photoKey] = '';
+        renderHr();
+      } else {
+        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) {
+      alert('削除に失敗しました：' + err.message);
+    });
 }
 
 // ============================================================
