@@ -322,6 +322,15 @@
     background: var(--bg-subtle); border: 1px solid var(--border); color: var(--accent);
   }
   .hr-link-chip:hover { background: var(--success-bg); border-color: var(--accent); }
+  /* ダッシュボードから直接写真を追加するボタン（クリック/ドラッグ&ドロップ両対応） */
+  .hr-photo-add {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 4px;
+    border: 1px dashed var(--border); color: var(--muted); cursor: pointer;
+    font-size: 18px; line-height: 1; background: var(--card);
+  }
+  .hr-photo-add:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
+  .hr-photo-add.uploading { cursor: wait; opacity: 0.6; }
   .lightbox-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
     z-index: 300; align-items: center; justify-content: center; cursor: zoom-out;
@@ -1137,6 +1146,7 @@ function renderHr() {
   }
   const catClass = HR_CAT_CLASS;
   const depts = [...new Set(cachedHr.map(r => r.dept))];
+  window._hrPhotoTargets = []; // ダッシュボードからの写真アップロード時に行を特定するための対応表
   let html = '';
   depts.forEach(dept => {
     const items = cachedHr.filter(r => r.dept === dept && r.content);
@@ -1154,15 +1164,25 @@ function renderHr() {
     items.forEach(item => {
       const cls = catClass[item.category] || '';
       const statusCls = item.status ? 'hr-status-' + item.status : '';
-      const photoUrls = [item.photo1, item.photo2, item.photo3].filter(Boolean);
-      const photosHtml = photoUrls.length
-        ? photoUrls.map(function(url) {
-            if (isImageUrl_(url)) {
-              return '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy">';
-            }
-            // 画像以外のURL（資料・記事など）は新しいタブで開くリンクチップとして表示する
-            return '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="hr-link-chip" title="' + esc(url) + '">🔗</a>';
-          }).join('')
+      const photoSlots = [item.photo1, item.photo2, item.photo3];
+      const filledHtml = photoSlots.filter(Boolean).map(function(url) {
+        if (isImageUrl_(url)) {
+          return '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy">';
+        }
+        // 画像以外のURL（資料・記事など）は新しいタブで開くリンクチップとして表示する
+        return '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="hr-link-chip" title="' + esc(url) + '">🔗</a>';
+      }).join('');
+      // 空きスロットがあれば、ダッシュボード上から直接写真を追加できるボタン（クリック/ドラッグ&ドロップ両対応）を出す
+      let addHtml = '';
+      if (photoSlots.filter(Boolean).length < 3) {
+        const targetIdx = window._hrPhotoTargets.length;
+        window._hrPhotoTargets.push(item);
+        addHtml = '<label class="hr-photo-add" id="hr-photo-add-' + targetIdx + '" title="写真を追加（クリックまたはドラッグ&ドロップ）"'
+          + ' ondragover="event.preventDefault();" ondrop="onHrPhotoDrop_(event, ' + targetIdx + ')">'
+          + '+<input type="file" accept="image/*" style="display:none" onchange="onHrPhotoInputChange_(this, ' + targetIdx + ')"></label>';
+      }
+      const photosHtml = (filledHtml || addHtml)
+        ? (filledHtml + addHtml)
         : '<span style="color:var(--muted);font-size:12px;">-</span>';
       html += '<div class="hr-item ' + cls + gridCls + '">'
         + (hasUnit ? '<div class="hr-field"><span class="hr-field-label">部署</span><span class="hr-field-value hr-fit">' + (item.unit ? esc(item.unit) : '-') + '</span></div>' : '')
@@ -1211,6 +1231,7 @@ function isImageUrl_(url) {
   if (/\.(jpe?g|png|gif|webp|bmp|svg)(\?|#|$)/i.test(url)) return true;
   if (/drive\.google\.com\/thumbnail/i.test(url)) return true;
   if (/drive\.google\.com\/uc\?/i.test(url)) return true;
+  if (/googleusercontent\.com/i.test(url)) return true; // GAS側extractDriveImageUrl_が生成する形式
   return false;
 }
 
@@ -1222,6 +1243,90 @@ function openLightbox(url) {
 function closeLightbox() {
   document.getElementById('photo-lightbox').classList.remove('active');
   document.getElementById('lightbox-img').src = '';
+}
+
+// ============================================================
+// 人事コメントの写真をダッシュボードから直接アップロードする
+// （Googleドライブ・スプレッドシートを操作せず、その場で写真1〜3の空き欄に追加する）
+// ============================================================
+function onHrPhotoInputChange_(inputEl, idx) {
+  const file = inputEl.files && inputEl.files[0];
+  if (file) uploadHrPhoto_(idx, file);
+  inputEl.value = '';
+}
+
+function onHrPhotoDrop_(ev, idx) {
+  ev.preventDefault();
+  const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+  if (file) uploadHrPhoto_(idx, file);
+}
+
+function uploadHrPhoto_(idx, file) {
+  const item = window._hrPhotoTargets && window._hrPhotoTargets[idx];
+  if (!item) return;
+  if (!file.type || file.type.indexOf('image/') !== 0) {
+    alert('画像ファイルを選択してください');
+    return;
+  }
+
+  const btn = document.getElementById('hr-photo-add-' + idx);
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) { btn.classList.add('uploading'); btn.innerHTML = '<span class="spinner-sm" style="width:14px;height:14px;margin:0;"></span>'; }
+
+  resizeImageForUpload_(file, 1600).then(function(base64) {
+    return fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        key: ACCESS_KEY,
+        dept: item.dept, ym: item.ym, unit: item.unit || '',
+        category: item.category || '', targetPerson: item.targetPerson || '',
+        content: item.content || '', status: item.status || '',
+        imageBase64: base64, mimeType: 'image/jpeg'
+      })
+    });
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        if (!item.photo1) item.photo1 = data.photoUrl;
+        else if (!item.photo2) item.photo2 = data.photoUrl;
+        else item.photo3 = data.photoUrl;
+        renderHr();
+      } else {
+        alert('アップロードに失敗しました：' + (data.message || '不明なエラー'));
+        if (btn) { btn.classList.remove('uploading'); btn.innerHTML = originalHtml; }
+      }
+    })
+    .catch(function(err) {
+      alert('アップロードに失敗しました：' + err.message);
+      if (btn) { btn.classList.remove('uploading'); btn.innerHTML = originalHtml; }
+    });
+}
+
+// 画像をキャンバスで縮小し、Base64(JPEG)化する（スマホの高画質写真をそのまま送ると
+// 重くなるため、長辺が指定サイズを超える場合のみ縮小する）
+function resizeImageForUpload_(file, maxSize) {
+  return new Promise(function(resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        let w = img.width, h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+          else { w = Math.round(w * maxSize / h); h = maxSize; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+      };
+      img.onerror = function() { reject(new Error('画像の読み込みに失敗しました')); };
+      img.src = e.target.result;
+    };
+    reader.onerror = function() { reject(new Error('ファイルの読み込みに失敗しました')); };
+    reader.readAsDataURL(file);
+  });
 }
 
 // ============================================================
