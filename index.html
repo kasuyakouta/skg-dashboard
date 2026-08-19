@@ -766,7 +766,9 @@ let juchuRankingLoaded = false;
 let cachedJuchuMonthlyByYm = {};
 let cachedKengakuAll = [];
 let kengakuLoaded = false;
-let cachedUkakezanAll = [];
+let cachedUkakezanAll = []; // デフォルト表示（現在未解決の案件）
+let cachedUkakezanYms = []; // 月選択プルダウン用の年月一覧（全期間）
+let cachedUkakezanByYm = {}; // { ym: 行データ[] }（月を選んだ時だけ都度取得してキャッシュ）
 let ukakezanLoaded = false;
 let cachedFuelRows = [];
 let fuelDataLoaded = false;
@@ -1937,9 +1939,15 @@ async function openUkakezanTab(el) {
 
   document.getElementById('ukakezan-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
+    // デフォルトでは「現在未解決の案件」だけを取得する（軽量・高速）。
+    // 以前は2015年分からの全履歴（1500件超・数百KB）を毎回まるごと転送していたが、
+    // デフォルト表示で使うのは未解決分のみのため、それだけを返してもらうようにした。
+    // 月選択プルダウン用の年月一覧（全期間）は別途まとめて届く（行データそのものではなく
+    // 年月の文字列一覧だけなので軽い）。
     const url = withKey(GAS_URL + '?type=ukakezan_all');
     const data = await fetchJSONP(url);
     cachedUkakezanAll = (data && data.list) ? data.list : [];
+    cachedUkakezanYms = (data && data.allYms) ? data.allYms : [];
     ukakezanLoaded = true;
     populateUkakezanYmSelect();
   } catch (err) {
@@ -1951,39 +1959,46 @@ async function openUkakezanTab(el) {
 function populateUkakezanYmSelect() {
   const sel = document.getElementById('ukakezan-ym-select');
   const prev = sel.value;
-  // 新しい月から順に表示する
-  const months = [...new Set(cachedUkakezanAll.map(function(r) { return r.ym; }))].sort().reverse();
 
   sel.innerHTML = '<option value="">現在未解決の案件</option>';
-  months.forEach(function(ym) {
+  cachedUkakezanYms.forEach(function(ym) {
     const opt = document.createElement('option');
     opt.value = ym; opt.textContent = ym;
     sel.appendChild(opt);
   });
 
   // デフォルトは「現在未解決の案件」。前回選択していた月があればそれを維持する
-  if (prev && months.includes(prev)) {
+  if (prev && cachedUkakezanYms.includes(prev)) {
     sel.value = prev;
   }
 
   onUkakezanMonthChange();
 }
 
-// 月選択に応じて、読み込み済みデータをその場で絞り込む（通信なし）
-function onUkakezanMonthChange() {
+// 月選択に応じて表示を切り替える。
+// デフォルト（未選択）はタブを開いた時点で取得済みの「現在未解決の案件」をそのまま表示。
+// 特定の月を選んだ場合は、その月の全件（解決済み含む）を都度取得する
+// （初回のみ通信、同じ月を選び直した時はキャッシュを使うため通信なし）。
+async function onUkakezanMonthChange() {
   const ym = document.getElementById('ukakezan-ym-select').value;
-  if (ym) {
-    // 特定の月を選んだ場合：解決・未解決を問わず、その月に指摘された案件を全件表示
-    renderUkakezan(cachedUkakezanAll.filter(function(r) { return r.ym === ym; }), false);
-  } else {
-    // デフォルト：「結果」が済になっておらず、かつ「今年」指摘された案件のみ表示。
-    // 今年より前の案件は実質解決済みのはずなので、ここで除外する。
-    // 年は毎回その時点の西暦から自動判定するため、年が変わってもコード修正は不要。
-    const currentYear = String(new Date().getFullYear());
-    renderUkakezan(cachedUkakezanAll.filter(function(r) {
-      return !r.resolved && r.ym && r.ym.slice(0, 4) === currentYear;
-    }), true);
+  if (!ym) {
+    renderUkakezan(cachedUkakezanAll, true);
+    return;
   }
+
+  if (!cachedUkakezanByYm[ym]) {
+    document.getElementById('ukakezan-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
+    try {
+      const url = withKey(GAS_URL + '?type=ukakezan_all&ym=' + encodeURIComponent(ym));
+      const data = await fetchJSONP(url);
+      cachedUkakezanByYm[ym] = (data && data.list) ? data.list : [];
+    } catch (err) {
+      document.getElementById('ukakezan-body').innerHTML =
+        '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+      return;
+    }
+  }
+  renderUkakezan(cachedUkakezanByYm[ym], false);
 }
 
 function renderUkakezan(list, isDefaultView) {
