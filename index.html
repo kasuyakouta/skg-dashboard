@@ -829,7 +829,23 @@ function showTab(id, el) {
 // 初期化：年月一覧を取得
 // ============================================================
 async function init() {
-  setStatus('年月一覧を読み込み中...', true);
+  // 正式な年月一覧（サーバー側で実データがある月を判定したもの）を待たず、
+  // クライアント側でも計算できる暫定の年月一覧・デフォルト年月ですぐにデータ取得を始める
+  // （この通信1本分の直列待ちを無くし、体感の初期表示を高速化する）。
+  const sel = document.getElementById('ym-select');
+  sel.innerHTML = '';
+  [...FALLBACK_MONTHS].sort().reverse().forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m; opt.textContent = m;
+    sel.appendChild(opt);
+  });
+  const provisionalYm = pickDefaultYm(FALLBACK_MONTHS);
+  if (provisionalYm) sel.value = provisionalYm;
+  setStatus('', false);
+  loadAll();
+
+  // 正式な年月一覧は裏で取得し、届いたら選択肢を静かに差し替える。
+  // 暫定のデフォルト年月と実際のデフォルトが一致しなかった場合のみ、データを取り直す。
   try {
     let res;
     try {
@@ -838,40 +854,25 @@ async function init() {
       // 1回だけリトライ（初回アクセス時のGAS起動待ちによる遅延を吸収）
       res = await fetchJSONP(withKey(GAS_URL + '?type=months'));
     }
-    const data = res;
-    const months = (data.months || []).sort().reverse();
-    const sel = document.getElementById('ym-select');
+    const months = (res.months || []).sort().reverse();
+    if (!months.length) return; // 取得できなくても、既に暫定の一覧で動作しているため何もしなくてよい
+
+    const currentValue = sel.value;
     sel.innerHTML = '';
-    if (months.length === 0) {
-      [...FALLBACK_MONTHS].sort().reverse().forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m; opt.textContent = m;
-        sel.appendChild(opt);
-      });
-    } else {
-      months.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m; opt.textContent = m;
-        sel.appendChild(opt);
-      });
-    }
-    const defaultYm1 = pickDefaultYm(months.length ? months : FALLBACK_MONTHS);
-    if (defaultYm1) sel.value = defaultYm1;
-    // 最初の年月を自動ロード
-    setStatus('', false);
-    loadAll();
-  } catch(e) {
-    setStatus('', false);
-    const sel = document.getElementById('ym-select');
-    sel.innerHTML = '';
-    [...FALLBACK_MONTHS].sort().reverse().forEach(m => {
+    months.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m; opt.textContent = m;
       sel.appendChild(opt);
     });
-    const defaultYm2 = pickDefaultYm(FALLBACK_MONTHS);
-    if (defaultYm2) sel.value = defaultYm2;
-    loadAll();
+
+    if (months.includes(currentValue)) {
+      sel.value = currentValue; // 暫定値のままで問題なければ、取得済みのデータをそのまま使う
+    } else {
+      const defaultYm = pickDefaultYm(months);
+      if (defaultYm) { sel.value = defaultYm; loadAll(); }
+    }
+  } catch(e) {
+    // 正式な一覧が取得できなくても、既に暫定の一覧で動作しているため何もしなくてよい
   }
 }
 
@@ -910,6 +911,9 @@ async function loadAll(nocache) {
   const actionsPromise = needActions
     ? fetchJSONP(withKey(GAS_URL + '?type=actions')).catch(function() { return null; })
     : Promise.resolve(null);
+  // 部署別実績グラフで使う年度一覧も、依存関係が無いためここで並行して先読みしておく
+  // （後段のonDeptChange()が直列で待たなくて済むようにするため）
+  prefetchFiscalYears_();
   // 新規案件・受注案件ランキング・施設見学の月一覧・燃料データは、いずれもデータ量や通信本数の
   // 都合上、それぞれのタブを開いた時だけ読み込む（遅延読み込み）ため、ここでは取得しない
   // （openShinkiTab() / openJuchuTab() / openKengakuTab() / openFuelTab() を参照）
@@ -925,66 +929,81 @@ async function loadAll(nocache) {
       '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
   }
 
-  // サマリー計算（当月）
+  // サマリー計算（当月分）。前月比バッジはまだ届いていないので、いったん「不明」にしておく
   cachedSummary = computeDeptSummary(cachedPerf, ym, DEPTS);
+  cachedSummary.forEach(function(row) { row.prevAchieveRate = null; });
 
-  // 前月比較（前月比バッジ用。取得できなくても本体表示は継続する）
-  const prevFlatData = await prevFlatPromise;
-  const prevPerf = (prevFlatData && prevFlatData.perf) ? prevFlatData.perf : [];
-  const prevSummary = computeDeptSummary(prevPerf, prevYm, DEPTS);
-  cachedSummary.forEach(function(row) {
-    const prevRow = prevSummary.find(function(p){ return p.dept === row.dept; });
-    row.prevAchieveRate = (prevRow && prevRow.achieveRate !== null) ? prevRow.achieveRate : null;
-  });
-
-  const actionsData = await actionsPromise;
-  if (needActions) {
-    cachedActions = (actionsData && actionsData.list) ? actionsData.list : [];
-    actionsLoaded = true;
-  }
-
+  // 今月分のデータが揃った時点で、他の付随情報（前月比・次回アクション・グラフ等）を
+  // 待たずに先に画面を表示する（体感速度の改善）。付随情報は届き次第、後段で静かに追記する。
   if (data) {
     renderSummary(DEPTS);
     renderHr();
     renderPerfDetail();
   }
-
-  const infographicData = await infographicPromise;
-  cachedInfographic = (infographicData && (infographicData.imageFileId || infographicData.reportText))
-    ? infographicData : null;
-  renderInfographicReport();
-
-  const deptSel = document.getElementById('dept-select');
-  const prevDept = deptSel.value;
-  deptSel.innerHTML = '<option value="">全部署</option>';
-  DEPTS.forEach(function(d) {
-    const opt = document.createElement('option');
-    opt.value = d; opt.textContent = d;
-    deptSel.appendChild(opt);
-  });
-
-  // 部署別実績タブの初期表示部署（ページ初回ロード時のみ自動選択する）
-  const DEFAULT_PERF_DEPT = '地域インフラ共創部1課';
-  let deptAutoSelected = false;
-  if (prevDept && DEPTS.includes(prevDept)) {
-    deptSel.value = prevDept;
-  } else if (!perfDeptDefaultApplied && DEPTS.includes(DEFAULT_PERF_DEPT)) {
-    deptSel.value = DEFAULT_PERF_DEPT;
-    deptAutoSelected = true;
-  }
-  perfDeptDefaultApplied = true;
-
-  // 初回のみ：初期部署のグラフ・品目（デフォルトは「全品目 粗利益合計」）を自動描画
-  if (deptAutoSelected) {
-    await onDeptChange();
-  } else if (deptSel.value && cachedTrend[deptSel.value]) {
-    // 部署は変わらず対象年月だけが変わった場合でも、分析ノートは新しい月に合わせて再描画する
-    renderAnalysisNotes(deptSel.value);
-  }
-
   document.getElementById('header-ym').textContent =
     '実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件';
   setStatus('', false);
+
+  // ここから先は、お互いを待たずに並行して進める（どれも他の完了を待つ必要が無いため）
+  const deptChartWork = (async function() {
+    const deptSel = document.getElementById('dept-select');
+    const prevDept = deptSel.value;
+    deptSel.innerHTML = '<option value="">全部署</option>';
+    DEPTS.forEach(function(d) {
+      const opt = document.createElement('option');
+      opt.value = d; opt.textContent = d;
+      deptSel.appendChild(opt);
+    });
+
+    // 部署別実績タブの初期表示部署（ページ初回ロード時のみ自動選択する）
+    const DEFAULT_PERF_DEPT = '地域インフラ共創部1課';
+    let deptAutoSelected = false;
+    if (prevDept && DEPTS.includes(prevDept)) {
+      deptSel.value = prevDept;
+    } else if (!perfDeptDefaultApplied && DEPTS.includes(DEFAULT_PERF_DEPT)) {
+      deptSel.value = DEFAULT_PERF_DEPT;
+      deptAutoSelected = true;
+    }
+    perfDeptDefaultApplied = true;
+
+    // 初回のみ：初期部署のグラフ・品目（デフォルトは「全品目 粗利益合計」）を自動描画
+    if (deptAutoSelected) {
+      await onDeptChange();
+    } else if (deptSel.value && cachedTrend[deptSel.value]) {
+      // 部署は変わらず対象年月だけが変わった場合でも、分析ノートは新しい月に合わせて再描画する
+      renderAnalysisNotes(deptSel.value);
+    }
+  })();
+
+  const prevMonthWork = (async function() {
+    // 前月比較（前月比バッジ用。取得できなくても本体表示は継続する）
+    const prevFlatData = await prevFlatPromise;
+    const prevPerf = (prevFlatData && prevFlatData.perf) ? prevFlatData.perf : [];
+    const prevSummary = computeDeptSummary(prevPerf, prevYm, DEPTS);
+    cachedSummary.forEach(function(row) {
+      const prevRow = prevSummary.find(function(p){ return p.dept === row.dept; });
+      row.prevAchieveRate = (prevRow && prevRow.achieveRate !== null) ? prevRow.achieveRate : null;
+    });
+    if (data) renderSummary(DEPTS);
+  })();
+
+  const actionsWork = (async function() {
+    const actionsData = await actionsPromise;
+    if (needActions) {
+      cachedActions = (actionsData && actionsData.list) ? actionsData.list : [];
+      actionsLoaded = true;
+      if (data) renderSummary(DEPTS);
+    }
+  })();
+
+  const infographicWork = (async function() {
+    const infographicData = await infographicPromise;
+    cachedInfographic = (infographicData && (infographicData.imageFileId || infographicData.reportText))
+      ? infographicData : null;
+    renderInfographicReport();
+  })();
+
+  await Promise.allSettled([deptChartWork, prevMonthWork, actionsWork, infographicWork]);
 }
 
 // ============================================================
@@ -2282,6 +2301,17 @@ let fiscalYearsLoaded = false;
 let selectedFy = null; // 部署別実績で選択中の年度（nullなら未初期化＝現在の年度を後で設定）
 let cachedTotalMenteYears = null; // トータルメンテナンス課の全年度比較データ
 
+// 部署別実績グラフで使う年度一覧を先読みしておくためのPromise。
+// loadAll()の冒頭で他の通信と並行して呼んでおくことで、onDeptChange()内での
+// 直列待ち（本体データ→年度一覧→月次推移、の3段目）を無くす。
+let fiscalYearsPromise = null;
+function prefetchFiscalYears_() {
+  if (!fiscalYearsPromise) {
+    fiscalYearsPromise = fetchJSONP(withKey(GAS_URL + '?type=fiscal_years')).catch(function() { return null; });
+  }
+  return fiscalYearsPromise;
+}
+
 // 各部署のグラフデフォルト設定
 // key: 品目名||指標名（完全一致）/ filterFn: 複数品目を合算
 const DEPT_DEFAULT_CHART = {
@@ -2339,8 +2369,7 @@ async function populateFiscalYearSelect() {
   const sel = document.getElementById('perf-fy-select');
   if (!fiscalYearsLoaded) {
     try {
-      const url = withKey(GAS_URL + '?type=fiscal_years');
-      const data = await fetchJSONP(url);
+      const data = await prefetchFiscalYears_(); // 先読み済みならその結果をそのまま使う
       cachedFiscalYears = (data && data.years) ? data.years : [];
       if (selectedFy === null) {
         selectedFy = (data && data.currentFy) ? data.currentFy : (cachedFiscalYears[0] || null);
