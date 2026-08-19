@@ -654,6 +654,21 @@ const ALL_DEPTS = [
   "Re\"バース仙台港","Re\"バース仙台岩切","Re\"バース仙台扇町"
 ];
 
+// 全部署サマリーの部署カードだけで使う表示名の上書き。
+// 部署名そのもの（他タブでの絞り込み・データの紐付けキー）は変更せず、
+// この画面の見た目（カードの見出し）だけをわかりやすい名称に置き換える。
+const DEPT_DISPLAY_NAME = {
+  "地域インフラ共創部1課": "一廃・産廃合計",
+  "地域インフラ共創部2課": "自社古紙合計",
+  "感動デザイン課": "機密合計",
+  "Re\"バース仙台港": "全設備合計（仙台港）",
+  "Re\"バース仙台扇町": "古紙合計（扇町）",
+  "Re\"バース仙台岩切": "段ボール合計（岩切）"
+};
+function deptDisplayName_(dept) {
+  return DEPT_DISPLAY_NAME[dept] || dept;
+}
+
 // 月末の会議では「前月分」の実績を報告する運用のため、既定表示は常に前月にする
 function getDefaultReportYm_() {
   const now = new Date();
@@ -1109,7 +1124,7 @@ function renderSummary(DEPTS_ARG) {
     let cardHtml = '<div class="dept-card ' + stateCls + '">'
       + '<div class="dept-card-head">'
         + '<div>'
-          + '<div class="dept-card-name">' + esc(row.dept) + '</div>'
+          + '<div class="dept-card-name">' + esc(deptDisplayName_(row.dept)) + '</div>'
           + '<div class="dept-card-metric">' + esc(metricLabel) + '</div>'
         + '</div>'
         + (rate !== null ? '<span class="rate-badge ' + cls + '">' + rateStr + '</span>' : '')
