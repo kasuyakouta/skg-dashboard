@@ -431,10 +431,34 @@
     border-radius: 10px; cursor: zoom-in;
     display: block; margin: 0 auto; border: 1px solid var(--border);
   }
-  .infographic-hint {
-    margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border);
-    font-size: 12px; color: var(--muted); text-align: right;
+  /* 画像の右下に重ねて表示する「画像を変更」ボタン */
+  .infographic-image-wrap { position: relative; }
+  .infographic-change-img {
+    position: absolute; bottom: 10px; right: 10px;
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 12px; border-radius: 20px;
+    background: rgba(0,0,0,0.55); color: #fff; cursor: pointer;
+    font-size: 12px;
   }
+  .infographic-change-img:hover { background: rgba(0,0,0,0.75); }
+  /* 画像が未登録の場合に表示する追加用ドロップゾーン */
+  .infographic-drop {
+    display: block; border: 1px dashed var(--border); border-radius: 10px;
+    padding: 32px 16px; text-align: center; color: var(--muted); cursor: pointer;
+    font-size: 13px; background: var(--bg-subtle);
+  }
+  .infographic-drop:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
+  .infographic-drop.pending { opacity: 0.6; pointer-events: none; }
+  /* 文章の直接編集欄 */
+  .infographic-edit { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .infographic-edit-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .infographic-textarea {
+    width: 100%; min-height: 140px; padding: 10px 12px; box-sizing: border-box;
+    border: 1px solid var(--border); border-radius: 8px; font-family: inherit;
+    font-size: 13px; line-height: 1.8; color: var(--text); resize: vertical;
+  }
+  .infographic-textarea:focus { outline: none; border-color: var(--accent); }
+  .infographic-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -1453,37 +1477,144 @@ function renderInfographicReport() {
   const body = document.getElementById('report-body');
   const info = cachedInfographic;
 
+  // アップロード直後のプレビュー中（blob: URL）は、そのままプレビュー用に使う
+  const isPreviewing = !!(info && info._previewing);
   const thumbUrl = (info && info.imageFileId)
-    ? 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(info.imageFileId) + '&sz=w1600'
+    ? (isPreviewing ? info.imageFileId : 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(info.imageFileId) + '&sz=w1600')
     : '';
   const fullUrl = (info && info.imageFileId)
-    ? 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(info.imageFileId) + '&sz=w2000'
+    ? (isPreviewing ? info.imageFileId : 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(info.imageFileId) + '&sz=w2000')
     : '';
 
   let html = '<div class="card infographic-card">';
 
+  // 画像：登録済みなら画像に重ねて「画像を変更」ボタン、未登録なら追加用ドロップゾーンを表示する
   if (thumbUrl) {
-    html += '<img id="infographic-img" src="' + esc(thumbUrl) + '" class="infographic-thumb" onclick="openLightbox(\'' + esc(fullUrl) + '\')" loading="lazy">';
+    html += '<div class="infographic-image-wrap" style="' + (isPreviewing ? 'opacity:0.6;' : '') + '">'
+      + '<img id="infographic-img" src="' + esc(thumbUrl) + '" class="infographic-thumb" onclick="openLightbox(\'' + esc(fullUrl) + '\')" loading="lazy">'
+      + (isPreviewing
+        ? '<span class="infographic-change-img"><span class="spinner-sm" style="width:12px;height:12px;margin:0;"></span>&nbsp;保存中...</span>'
+        : ('<label class="infographic-change-img" title="画像を変更（クリックまたはドラッグ&ドロップ）"'
+          + ' ondragover="event.preventDefault();" ondrop="onInfographicImageDrop_(event)">🖼 画像を変更'
+          + '<input type="file" accept="image/*" style="display:none" onchange="onInfographicImageInputChange_(this)"></label>'))
+      + '</div>';
   } else {
-    html += '<div class="empty" style="padding:24px 0;">この月のインフォグラフィックはまだ登録されていません</div>';
+    html += '<label class="infographic-drop' + (isPreviewing ? ' pending' : '') + '" id="infographic-drop"'
+      + ' ondragover="event.preventDefault();" ondrop="onInfographicImageDrop_(event)">'
+      + '＋ 画像を追加（クリックまたはドラッグ&ドロップ）'
+      + '<input type="file" accept="image/*" style="display:none" onchange="onInfographicImageInputChange_(this)"></label>';
   }
 
-  if (info && info.reportText) {
-    html += '<div class="report-text" style="margin-top:14px;">' + esc(info.reportText) + '</div>';
-    if (info.generatedAt) {
-      const genDate = new Date(info.generatedAt).toLocaleString('ja-JP');
-      html += '<div class="report-meta">生成日時: ' + esc(genDate) + '</div>';
-    }
-  } else {
-    html += '<div class="empty" style="padding:12px 0;">この月のAIレポート（グループ全体）はまだ登録されていません</div>';
+  // 文章：常に編集可能なテキストエリアとして表示する
+  html += '<div class="infographic-edit">';
+  html += '<div class="infographic-edit-label">レポート本文</div>';
+  html += '<textarea id="infographic-text-input" class="infographic-textarea" placeholder="この月のAIレポートの文章を入力してください">'
+    + esc((info && info.reportText) || '') + '</textarea>';
+  html += '<div class="infographic-actions">';
+  if (info && info.generatedAt) {
+    const genDate = new Date(info.generatedAt).toLocaleString('ja-JP');
+    html += '<div class="report-meta" style="margin-top:0; margin-right:auto;">最終更新: ' + esc(genDate) + '</div>';
   }
-
-  html += '<div class="infographic-hint">画像・文章の登録／更新は、スプレッドシートの「AIレポート下書き」シートから行ってください（B1で「全体（グループ）」を選択）。</div>';
+  html += '<button class="btn btn-primary" id="infographic-save-btn" onclick="saveInfographicReport_()">保存</button>';
+  html += '</div>';
+  html += '</div>';
 
   html += '</div>';
   body.innerHTML = html;
 
   adjustInfographicImageHeight();
+}
+
+// ============================================================
+// AIレポート：ダッシュボードからの画像・文章の直接編集
+// ============================================================
+function onInfographicImageInputChange_(inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  if (file) uploadInfographicImage_(file);
+  inputEl.value = '';
+}
+
+function onInfographicImageDrop_(ev) {
+  ev.preventDefault();
+  const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+  if (file) uploadInfographicImage_(file);
+}
+
+// 画像は選択/ドロップした瞬間に楽観的UI更新でプレビューし、裏側で保存する。
+// 保存時は今テキストエリアに入っている文章も一緒に送る（画像だけの保存で文章が消えないようにするため）。
+function uploadInfographicImage_(file) {
+  const ym = document.getElementById('ym-select').value;
+  if (!ym) return;
+  if (!file.type || file.type.indexOf('image/') !== 0) {
+    alert('画像ファイルを選択してください');
+    return;
+  }
+
+  const textInput = document.getElementById('infographic-text-input');
+  const reportText = textInput ? textInput.value : ((cachedInfographic && cachedInfographic.reportText) || '');
+  const previewUrl = URL.createObjectURL(file);
+  const prevInfo = cachedInfographic;
+
+  cachedInfographic = Object.assign({}, cachedInfographic, { ym: ym, reportText: reportText, imageFileId: previewUrl, _previewing: true });
+  renderInfographicReport();
+
+  resizeImageForUpload_(file, 1600).then(function(base64) {
+    return fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'save_infographic', key: ACCESS_KEY,
+        ym: ym, reportText: reportText,
+        imageBase64: base64, mimeType: 'image/jpeg'
+      })
+    });
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      URL.revokeObjectURL(previewUrl);
+      if (data.status === 'ok' && data.infographic) {
+        cachedInfographic = data.infographic;
+      } else {
+        cachedInfographic = prevInfo; // 失敗したので元に戻す
+        alert('画像の保存に失敗しました：' + (data.message || '不明なエラー'));
+      }
+      renderInfographicReport();
+    })
+    .catch(function(err) {
+      URL.revokeObjectURL(previewUrl);
+      cachedInfographic = prevInfo;
+      renderInfographicReport();
+      alert('画像の保存に失敗しました：' + err.message);
+    });
+}
+
+// 文章を保存する（画像には触れない：GAS側は imageBase64が無い場合、既存の画像を保持する）
+function saveInfographicReport_() {
+  const ym = document.getElementById('ym-select').value;
+  if (!ym) return;
+  const textInput = document.getElementById('infographic-text-input');
+  const reportText = textInput ? textInput.value : '';
+  const btn = document.getElementById('infographic-save-btn');
+
+  if (btn) { btn.disabled = true; btn.textContent = '保存中...'; }
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'save_infographic', key: ACCESS_KEY, ym: ym, reportText: reportText })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok' && data.infographic) {
+        cachedInfographic = data.infographic;
+        renderInfographicReport();
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = '保存'; }
+        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = '保存'; }
+      alert('保存に失敗しました：' + err.message);
+    });
 }
 
 // ヘッダー・年月コントロール・タブなど「画像より上にある要素」の実際の高さを
