@@ -459,6 +459,18 @@
   }
   .infographic-textarea:focus { outline: none; border-color: var(--accent); }
   .infographic-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+
+  /* 管理会社値上げ（月ごとの自由記述一覧） */
+  .kanrineage-ym-head {
+    font-size: 12px; font-weight: 600; color: var(--muted); margin: 16px 0 6px;
+    padding-bottom: 4px; border-bottom: 1px solid var(--border);
+  }
+  .kanrineage-ym-head:first-child { margin-top: 0; }
+  .kanrineage-item {
+    white-space: pre-line; font-size: 13px; line-height: 1.8; color: var(--text);
+    padding: 10px 12px; margin-bottom: 8px; background: var(--bg-subtle);
+    border-radius: 8px; border: 1px solid var(--border);
+  }
 </style>
 </head>
 <body>
@@ -491,6 +503,7 @@
       <div class="tab" onclick="openShinkiTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>新規案件</div>
       <div class="tab" onclick="openJuchuTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="8.5 12.5 11 15 15.5 9"/></svg>受注案件</div>
       <div class="tab" onclick="openKengakuTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="1"/><line x1="9" y1="7" x2="9" y2="7"/><line x1="15" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="9" y2="11"/><line x1="15" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="9" y2="15"/><line x1="15" y1="15" x2="15" y2="15"/></svg>施設見学</div>
+      <div class="tab" onclick="openKanriNeageTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29a2 2 0 0 0 2.83 0l7.17-7.17a2 2 0 0 0 0-2.83L12 2Z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>管理会社値上げ</div>
       <div class="tab" onclick="openUkakezanTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14.5" r="1.6"/></svg>売掛残物件</div>
       <div class="tab" onclick="openFuelTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="10" height="17" rx="1"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 8h3l3 3v6a1.5 1.5 0 0 1-3 0v-2a1 1 0 0 0-1-1h-2"/></svg>燃料</div>
     </div>
@@ -603,6 +616,18 @@
     </div>
 
     <div id="kengaku-body"><div class="empty">タブを開くと、施設見学の全件一覧が表示されます</div></div>
+  </div>
+
+  <!-- 管理会社値上げタブ -->
+  <div id="tab-kanrineage" class="tab-content">
+    <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;gap:12px;">
+      <label>対象月</label>
+      <select id="kanrineage-ym-select" onchange="onKanriNeageMonthChange()">
+        <option value="">すべて表示</option>
+      </select>
+    </div>
+
+    <div id="kanrineage-body"><div class="empty">タブを開くと、管理会社値上げの全件一覧が表示されます</div></div>
   </div>
 
   <!-- 売掛残物件タブ -->
@@ -805,6 +830,9 @@ let juchuRankingLoaded = false;
 let cachedJuchuMonthlyByYm = {};
 let cachedKengakuAll = [];
 let kengakuLoaded = false;
+let cachedKanriNeageAll = [];
+let kanriNeageLoaded = false;
+let kanriNeageDefaultYmApplied = false;
 let cachedUkakezanAll = []; // デフォルト表示（現在未解決の案件）
 let cachedUkakezanYms = []; // 月選択プルダウン用の年月一覧（全期間）
 let cachedUkakezanByYm = {}; // { ym: 行データ[] }（月を選んだ時だけ都度取得してキャッシュ）
@@ -2066,6 +2094,94 @@ function renderKengaku(list) {
   });
 
   html += '</tbody></table></div></div>';
+  body.innerHTML = html;
+}
+
+// ============================================================
+// 管理会社値上げタブ（デフォルトは全件一覧、月選択で絞り込み）
+// ============================================================
+
+// タブを開いた時だけ全件を読み込む（遅延読み込み）。
+// 月の絞り込みは、読み込み済みのデータを画面側でフィルタするだけなので通信は発生しない。
+async function openKanriNeageTab(el) {
+  showTab('tab-kanrineage', el);
+
+  if (kanriNeageLoaded) {
+    populateKanriNeageYmSelect();
+    return;
+  }
+
+  document.getElementById('kanrineage-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
+  try {
+    const url = withKey(GAS_URL + '?type=kanri_neage_all');
+    const data = await fetchJSONP(url);
+    cachedKanriNeageAll = (data && data.list) ? data.list : [];
+    kanriNeageLoaded = true;
+    populateKanriNeageYmSelect();
+  } catch (err) {
+    document.getElementById('kanrineage-body').innerHTML =
+      '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+  }
+}
+
+function populateKanriNeageYmSelect() {
+  const sel = document.getElementById('kanrineage-ym-select');
+  const prev = sel.value;
+  // 新しい月から順に表示する
+  const months = [...new Set(cachedKanriNeageAll.map(function(r) { return r.ym; }))].sort().reverse();
+
+  sel.innerHTML = '<option value="">すべて表示</option>';
+  months.forEach(function(ym) {
+    const opt = document.createElement('option');
+    opt.value = ym; opt.textContent = ym;
+    sel.appendChild(opt);
+  });
+
+  // 前回選択していた月があればそれを維持し、初回表示時のみ「前月」を既定にする
+  if (prev && months.includes(prev)) {
+    sel.value = prev;
+  } else if (!kanriNeageDefaultYmApplied) {
+    const nearestYm = pickNearestPastYm_(months, getDefaultReportYm_());
+    if (nearestYm) sel.value = nearestYm;
+  }
+  kanriNeageDefaultYmApplied = true;
+
+  onKanriNeageMonthChange();
+}
+
+// 月選択に応じて、読み込み済みデータをその場で絞り込む（通信なし）
+function onKanriNeageMonthChange() {
+  const ym = document.getElementById('kanrineage-ym-select').value;
+  const list = ym
+    ? cachedKanriNeageAll.filter(function(r) { return r.ym === ym; })
+    : cachedKanriNeageAll;
+  renderKanriNeage(list);
+}
+
+function renderKanriNeage(list) {
+  const body = document.getElementById('kanrineage-body');
+
+  if (!list.length) {
+    body.innerHTML = '<div class="empty">データがありません</div>';
+    return;
+  }
+
+  // 新しい月が上に来るよう並べ替え（同じ月の中ではシートの入力順を維持）
+  const sorted = [...list].sort(function(a, b) {
+    if (a.ym === b.ym) return 0;
+    return a.ym < b.ym ? 1 : -1;
+  });
+
+  let html = '<div class="card"><h2>管理会社値上げ（' + sorted.length + '件）</h2>';
+  let lastYm = null;
+  sorted.forEach(function(r) {
+    if (r.ym !== lastYm) {
+      html += '<div class="kanrineage-ym-head">' + esc(r.ym) + '</div>';
+      lastYm = r.ym;
+    }
+    html += '<div class="kanrineage-item">' + esc(r.content) + '</div>';
+  });
+  html += '</div>';
   body.innerHTML = html;
 }
 
