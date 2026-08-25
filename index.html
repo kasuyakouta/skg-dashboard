@@ -467,10 +467,43 @@
   }
   .kanrineage-ym-head:first-child { margin-top: 0; }
   .kanrineage-item {
+    position: relative;
     white-space: pre-line; font-size: 13px; line-height: 1.8; color: var(--text);
-    padding: 10px 12px; margin-bottom: 8px; background: var(--bg-subtle);
+    padding: 10px 40px 10px 12px; margin-bottom: 8px; background: var(--bg-subtle);
     border-radius: 8px; border: 1px solid var(--border);
   }
+  .kanrineage-item-edit {
+    position: absolute; top: 8px; right: 8px;
+    width: 24px; height: 24px; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); background: var(--card); color: var(--muted); cursor: pointer;
+  }
+  .kanrineage-item-edit:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
+
+  /* 追加・編集で共通利用するモーダル */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 400; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-box {
+    background: var(--card); border-radius: var(--radius); padding: 24px;
+    max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto;
+    box-shadow: var(--shadow-md);
+  }
+  .modal-box h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--primary); }
+  .modal-field { margin-bottom: 14px; }
+  .modal-field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .modal-field input[type="text"], .modal-field input[type="month"], .modal-field input[type="date"],
+  .modal-field input[type="number"], .modal-field textarea, .modal-field select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: inherit; font-size: 13px; box-sizing: border-box; color: var(--text); background: var(--card);
+  }
+  .modal-field input:focus, .modal-field textarea:focus, .modal-field select:focus { outline: none; border-color: var(--accent); }
+  .modal-field textarea { min-height: 100px; resize: vertical; line-height: 1.7; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .btn-danger { border-color: var(--danger); color: var(--danger-text); }
+  .btn-danger:hover { border-color: var(--danger); color: var(--danger-text); background: var(--danger-bg); }
 </style>
 </head>
 <body>
@@ -625,6 +658,7 @@
       <select id="kanrineage-ym-select" onchange="onKanriNeageMonthChange()">
         <option value="">すべて表示</option>
       </select>
+      <button class="btn btn-primary" style="margin-left:auto;" onclick="openKanriNeageModal_(null)">＋ 新規追加</button>
     </div>
 
     <div id="kanrineage-body"><div class="empty">タブを開くと、管理会社値上げの全件一覧が表示されます</div></div>
@@ -672,6 +706,11 @@
 
 <div id="photo-lightbox" class="lightbox-overlay" onclick="closeLightbox()">
   <img id="lightbox-img" src="">
+</div>
+
+<!-- ダッシュボードからの追加・編集で共通利用するモーダル -->
+<div id="modal-overlay" class="modal-overlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal-box" id="modal-box"></div>
 </div>
 
 <script>
@@ -1362,6 +1401,19 @@ function openLightbox(url) {
 function closeLightbox() {
   document.getElementById('photo-lightbox').classList.remove('active');
   document.getElementById('lightbox-img').src = '';
+}
+
+// ============================================================
+// 追加・編集で共通利用するモーダル（新規案件・受注案件・施設見学・
+// 管理会社値上げ・人事コメントなど、ダッシュボード側からの入力全般で使う）
+// ============================================================
+function openModal_(html) {
+  document.getElementById('modal-box').innerHTML = html;
+  document.getElementById('modal-overlay').classList.add('active');
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+  document.getElementById('modal-box').innerHTML = '';
 }
 
 // ============================================================
@@ -2179,10 +2231,80 @@ function renderKanriNeage(list) {
       html += '<div class="kanrineage-ym-head">' + esc(r.ym) + '</div>';
       lastYm = r.ym;
     }
-    html += '<div class="kanrineage-item">' + esc(r.content) + '</div>';
+    html += '<div class="kanrineage-item">' + esc(r.content)
+      + '<span class="kanrineage-item-edit" title="編集" onclick="openKanriNeageEditModal_(\'' + esc(r.id) + '\')">✎</span>'
+      + '</div>';
   });
   html += '</div>';
   body.innerHTML = html;
+}
+
+// ============================================================
+// 管理会社値上げ：ダッシュボードからの追加・編集・削除
+// ============================================================
+function openKanriNeageEditModal_(id) {
+  const item = cachedKanriNeageAll.find(function(r) { return r.id === id; });
+  if (!item) { alert('データが見つかりませんでした。再読み込みしてください。'); return; }
+  openKanriNeageModal_(item);
+}
+
+function openKanriNeageModal_(existing) {
+  const isEdit = !!existing;
+  const ym = existing ? existing.ym : (document.getElementById('ym-select').value || '');
+  const content = existing ? existing.content : '';
+  const id = existing ? existing.id : '';
+
+  let html = '<h3>' + (isEdit ? '管理会社値上げを編集' : '管理会社値上げを新規追加') + '</h3>';
+  html += '<div class="modal-field"><label>対象年月</label><input type="month" id="kn-modal-ym" value="' + esc(ym) + '"></div>';
+  html += '<div class="modal-field"><label>内容</label><textarea id="kn-modal-content" placeholder="内容を入力してください">' + esc(content) + '</textarea></div>';
+  html += '<div class="modal-actions">';
+  if (isEdit) html += '<button class="btn btn-danger" onclick="deleteKanriNeage_(\'' + esc(id) + '\')">削除</button>';
+  html += '<button class="btn" onclick="closeModal()">キャンセル</button>';
+  html += '<button class="btn btn-primary" onclick="saveKanriNeage_(\'' + esc(id) + '\')">保存</button>';
+  html += '</div>';
+  openModal_(html);
+}
+
+function saveKanriNeage_(id) {
+  const ym = document.getElementById('kn-modal-ym').value;
+  const content = document.getElementById('kn-modal-content').value.trim();
+  if (!ym || !content) { alert('対象年月と内容を入力してください'); return; }
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'save_kanri_neage', key: ACCESS_KEY, id: id || '', ym: ym, content: content })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        cachedKanriNeageAll = data.list || [];
+        closeModal();
+        populateKanriNeageYmSelect();
+      } else {
+        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { alert('保存に失敗しました：' + err.message); });
+}
+
+function deleteKanriNeage_(id) {
+  if (!confirm('この記録を削除しますか？この操作は元に戻せません。')) return;
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'delete_kanri_neage', key: ACCESS_KEY, id: id })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        cachedKanriNeageAll = data.list || [];
+        closeModal();
+        populateKanriNeageYmSelect();
+      } else {
+        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { alert('削除に失敗しました：' + err.message); });
 }
 
 // ============================================================
