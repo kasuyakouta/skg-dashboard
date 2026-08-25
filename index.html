@@ -647,7 +647,7 @@
     <div class="controls" style="background:none;border:none;padding:0;margin-bottom:16px;gap:12px;">
       <label>対象月</label>
       <select id="juchu-ym-select" onchange="onJuchuMonthChange()">
-        <option value="">選択してください（年度累計ランキングを表示）</option>
+        <option value="">選択してください</option>
       </select>
       <button class="btn btn-primary" style="margin-left:auto;" onclick="openJuchuModal_(null)">＋ 新規追加</button>
     </div>
@@ -1075,6 +1075,10 @@ async function loadAll(nocache) {
   document.getElementById('header-ym').textContent =
     '実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件';
   setStatus('', false);
+
+  // 画面を出し終えてから、開いた時に読み込む方式のタブを裏側で先読みしておく。
+  // 初回表示を邪魔しないよう、必ずここ（初期描画のあと）で開始する。
+  prefetchLazyTabs_();
 
   // ここから先は、お互いを待たずに並行して進める（どれも他の完了を待つ必要が無いため）
   const deptChartWork = (async function() {
@@ -1993,10 +1997,7 @@ async function openShinkiTab(el) {
 
   document.getElementById('shinki-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
-    const url = withKey(GAS_URL + '?type=shinki_anken');
-    const data = await fetchJSONP(url);
-    cachedShinki = (data && data.list) ? data.list : [];
-    shinkiLoaded = true;
+    await loadLazyTab_('shinki');
     populateShinkiYmSelect();
     populateShinkiResultSelect();
     renderShinkiAnken();
@@ -2192,22 +2193,8 @@ function deleteShinki_(id) {
 // 受注案件タブは他のタブより通信本数を増やすため、タブを開いた時だけ読み込む（遅延読み込み）
 async function openJuchuTab(el) {
   showTab('tab-juchu', el);
-
-  if (juchuRankingLoaded) {
-    populateJuchuYmSelect();
-    renderJuchuRanking();
-    return;
-  }
-
-  document.getElementById('juchu-ranking-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
-  try {
-    await fetchJuchuRanking_();
-    populateJuchuYmSelect();
-    renderJuchuRanking();
-  } catch (err) {
-    document.getElementById('juchu-ranking-body').innerHTML =
-      '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
-  }
+  // 選択されている内容（既定は前月）に応じて、必要な分だけを読み込んで描画する
+  await populateJuchuYmSelect();
 }
 
 async function fetchJuchuRanking_() {
@@ -2222,29 +2209,32 @@ async function fetchJuchuRanking_() {
 // 保存・削除の応答に含まれる集計結果で、受注案件タブをその場で描き直す（再取得なし）
 function applyJuchuViewResult_(data) {
   cachedJuchuMonthlyByYm = {};
-  if (data.ranking) {
-    cachedJuchuRanking = data.ranking.ranking || [];
-    juchuRankingLoaded = true;
-  }
-  const ym = document.getElementById('juchu-ym-select').value;
+  // 金額の変更はランキングの集計にも影響するため、次に選ばれた時に取り直させる
+  cachedJuchuRanking = [];
+  juchuRankingLoaded = false;
+
+  const ym = juchuViewYm_();
   if (ym && data.monthly) {
     cachedJuchuMonthlyByYm[ym] = data.monthly;
     renderJuchuMonthly(data.monthly);
   } else {
-    renderJuchuRanking();
+    // ランキング表示中や未選択の場合は、選択内容に応じて描き直す
+    onJuchuMonthChange();
   }
 }
 
 function populateJuchuYmSelect() {
   const sel = document.getElementById('juchu-ym-select');
   const prev = sel.value;
-  sel.innerHTML = '<option value="">選択してください</option>';
+  // 「選択してください」の下に年度累計ランキングを置き、その下に各月を並べる
+  sel.innerHTML = '<option value="">選択してください</option>'
+    + '<option value="' + JUCHU_RANKING_OPTION + '">年度累計 受注ランキング（担当者別）</option>';
   FALLBACK_MONTHS.forEach(function(ym) {
     const opt = document.createElement('option');
     opt.value = ym; opt.textContent = ym;
     sel.appendChild(opt);
   });
-  if (prev && FALLBACK_MONTHS.includes(prev)) {
+  if (prev && (prev === JUCHU_RANKING_OPTION || FALLBACK_MONTHS.includes(prev))) {
     sel.value = prev;
   } else if (!juchuDefaultYmApplied) {
     const defaultYm = getDefaultReportYm_();
@@ -2252,7 +2242,7 @@ function populateJuchuYmSelect() {
   }
   juchuDefaultYmApplied = true;
 
-  onJuchuMonthChange();
+  return onJuchuMonthChange();
 }
 
 function renderJuchuRanking() {
@@ -2348,26 +2338,45 @@ function toggleJuchuPerson(idx) {
 }
 
 async function onJuchuMonthChange() {
-  const ym = document.getElementById('juchu-ym-select').value;
+  const sel = document.getElementById('juchu-ym-select').value;
   const rankingSection = document.getElementById('juchu-ranking-section');
   const body = document.getElementById('juchu-monthly-body');
 
-  if (!ym) {
-    rankingSection.style.display = '';
+  // 年度累計ランキング：選ばれた時に初めて読み込む（開くだけでは取得しない）
+  if (sel === JUCHU_RANKING_OPTION) {
     body.style.display = 'none';
     body.innerHTML = '';
+    rankingSection.style.display = '';
+    if (!juchuRankingLoaded) {
+      document.getElementById('juchu-ranking-body').innerHTML =
+        '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
+      try {
+        await fetchJuchuRanking_();
+      } catch (err) {
+        document.getElementById('juchu-ranking-body').innerHTML =
+          '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+        return;
+      }
+    }
+    renderJuchuRanking();
     return;
   }
 
   rankingSection.style.display = 'none';
   body.style.display = '';
+
+  if (!sel) {
+    body.innerHTML = '<div class="empty">対象月、または「年度累計 受注ランキング」を選んでください</div>';
+    return;
+  }
+
   body.innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
-    if (!cachedJuchuMonthlyByYm[ym]) {
-      const url = withKey(GAS_URL + '?type=juchu_monthly&ym=' + encodeURIComponent(ym));
-      cachedJuchuMonthlyByYm[ym] = await fetchJSONP(url);
+    if (!cachedJuchuMonthlyByYm[sel]) {
+      const url = withKey(GAS_URL + '?type=juchu_monthly&ym=' + encodeURIComponent(sel));
+      cachedJuchuMonthlyByYm[sel] = await fetchJSONP(url);
     }
-    renderJuchuMonthly(cachedJuchuMonthlyByYm[ym]);
+    renderJuchuMonthly(cachedJuchuMonthlyByYm[sel]);
   } catch (err) {
     body.innerHTML = '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
   }
@@ -2482,8 +2491,8 @@ function saveJuchu_(id) {
     { action: 'save_juchu', key: ACCESS_KEY, id: id || '',
       kind: kind, ym: ym, name: name, item: item, date: date,
       amount: amount, person: person, content: content,
-      // 表示中の月を伝えると、GAS側が更新後の集計結果まで返してくれるため再取得が不要になる
-      viewYm: document.getElementById('juchu-ym-select').value || '' },
+      // 表示中の月を伝えると、GAS側が更新後のその月の一覧まで返してくれるため再取得が不要になる
+      viewYm: juchuViewYm_() },
     '保存しています…', '保存に失敗しました',
     applyJuchuViewResult_
   );
@@ -2494,7 +2503,7 @@ function deleteJuchu_(id) {
 
   return submitModal_(
     { action: 'delete_juchu', key: ACCESS_KEY, id: id,
-      viewYm: document.getElementById('juchu-ym-select').value || '' },
+      viewYm: juchuViewYm_() },
     '削除しています…', '削除に失敗しました',
     applyJuchuViewResult_
   );
@@ -2506,6 +2515,100 @@ function deleteJuchu_(id) {
 
 // 施設見学タブは、タブを開いた時だけ全件を読み込む（遅延読み込み）。
 // 月の絞り込みは、読み込み済みのデータを画面側でフィルタするだけなので通信は発生しない。
+// ============================================================
+// 「開いた時に読み込む」方式のタブの共通ローダー
+// ============================================================
+// これらのタブは月に依存しないデータを扱うため、1セッションで1回読めば足りる。
+// ・同時に何度呼ばれても通信は1回にまとめる
+//   （タブを開く操作と、裏側での先読みが重なっても二重取得しないようにするため）
+// ・主要データを描き終えたあと、1本ずつ順番に先読みする
+//   （まとめて投げると初期表示と回線を奪い合ってしまうため）
+const LAZY_TABS = {
+  kengaku: {
+    url: 'kengaku_all',
+    loaded: function() { return kengakuLoaded; },
+    apply: function(d) { cachedKengakuAll = (d && d.list) ? d.list : []; kengakuLoaded = true; }
+  },
+  shinki: {
+    url: 'shinki_anken',
+    loaded: function() { return shinkiLoaded; },
+    apply: function(d) { cachedShinki = (d && d.list) ? d.list : []; shinkiLoaded = true; }
+  },
+  kanriNeage: {
+    url: 'kanri_neage_all',
+    loaded: function() { return kanriNeageLoaded; },
+    apply: function(d) { cachedKanriNeageAll = (d && d.list) ? d.list : []; kanriNeageLoaded = true; }
+  },
+  ukakezan: {
+    url: 'ukakezan_all',
+    loaded: function() { return ukakezanLoaded; },
+    apply: function(d) {
+      cachedUkakezanAll = (d && d.list) ? d.list : [];
+      cachedUkakezanYms = (d && d.allYms) ? d.allYms : [];
+      ukakezanLoaded = true;
+    }
+  },
+  fuel: {
+    url: 'fuel_all',
+    loaded: function() { return fuelDataLoaded; },
+    apply: function(d) { cachedFuelRows = (d && d.rows) ? d.rows : []; fuelDataLoaded = true; }
+  },
+  // 受注案件は、開いた時に選択される月の一覧だけを先読みする。
+  // 年度累計ランキングはプルダウンで選ばれた時に初めて読み込むため、ここでは取得しない。
+  juchu: {
+    loaded: function() { return !!cachedJuchuMonthlyByYm[getDefaultReportYm_()]; },
+    load: function() { return prefetchJuchuDefaultMonth_(); }
+  }
+};
+
+// プルダウンで「年度累計ランキング」を選んだときの値（月の値と区別するための固定文字列）
+const JUCHU_RANKING_OPTION = '__ranking__';
+
+// 保存・削除の通信に載せる「表示中の月」。ランキング表示中は月ではないため空にする
+function juchuViewYm_() {
+  const v = document.getElementById('juchu-ym-select').value;
+  return (v && v !== JUCHU_RANKING_OPTION) ? v : '';
+}
+
+// 受注案件タブは開くと既定で「前月」が選択され、その月の一覧を取りに行く。
+// タブを開いた瞬間に表示できるよう、その月の分も先読みしておく。
+function prefetchJuchuDefaultMonth_() {
+  const sel = document.getElementById('juchu-ym-select');
+  const ym = (sel && sel.value) ? sel.value : getDefaultReportYm_();
+  if (!ym || !FALLBACK_MONTHS.includes(ym) || cachedJuchuMonthlyByYm[ym]) return Promise.resolve();
+  return fetchJSONP(withKey(GAS_URL + '?type=juchu_monthly&ym=' + encodeURIComponent(ym)))
+    .then(function(data) { cachedJuchuMonthlyByYm[ym] = data; })
+    .catch(function() { /* 失敗してもタブを開いた時に読み込まれる */ });
+}
+
+const _lazyTabPromises = {};
+
+function loadLazyTab_(key) {
+  const cfg = LAZY_TABS[key];
+  if (!cfg) return Promise.reject(new Error('不明なタブ: ' + key));
+  if (cfg.loaded()) return Promise.resolve();
+  if (!_lazyTabPromises[key]) {
+    const work = cfg.load
+      ? cfg.load()
+      : fetchJSONP(withKey(GAS_URL + '?type=' + cfg.url)).then(function(data) { cfg.apply(data); });
+    _lazyTabPromises[key] = work.finally(function() { delete _lazyTabPromises[key]; });
+  }
+  return _lazyTabPromises[key];
+}
+
+// 初期表示のあとに呼ぶ。1本ずつ順番に先読みするので、初期表示の通信を邪魔しない。
+let _lazyPrefetchStarted = false;
+async function prefetchLazyTabs_() {
+  if (_lazyPrefetchStarted) return;
+  _lazyPrefetchStarted = true;
+  // 画面左のタブの並びに合わせておく（よく見るものから先に用意される）
+  const order = ['shinki', 'juchu', 'kengaku', 'kanriNeage', 'ukakezan', 'fuel'];
+  for (var i = 0; i < order.length; i++) {
+    // 失敗しても止めない（そのタブを開いた時に改めて読み込まれる）
+    try { await loadLazyTab_(order[i]); } catch (e) { /* 何もしない */ }
+  }
+}
+
 async function openKengakuTab(el) {
   showTab('tab-kengaku', el);
 
@@ -2516,10 +2619,7 @@ async function openKengakuTab(el) {
 
   document.getElementById('kengaku-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
-    const url = withKey(GAS_URL + '?type=kengaku_all');
-    const data = await fetchJSONP(url);
-    cachedKengakuAll = (data && data.list) ? data.list : [];
-    kengakuLoaded = true;
+    await loadLazyTab_('kengaku');
     populateKengakuYmSelect();
   } catch (err) {
     document.getElementById('kengaku-body').innerHTML =
@@ -2672,10 +2772,7 @@ async function openKanriNeageTab(el) {
 
   document.getElementById('kanrineage-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
-    const url = withKey(GAS_URL + '?type=kanri_neage_all');
-    const data = await fetchJSONP(url);
-    cachedKanriNeageAll = (data && data.list) ? data.list : [];
-    kanriNeageLoaded = true;
+    await loadLazyTab_('kanriNeage');
     populateKanriNeageYmSelect();
   } catch (err) {
     document.getElementById('kanrineage-body').innerHTML =
@@ -2815,11 +2912,7 @@ async function openUkakezanTab(el) {
     // デフォルト表示で使うのは未解決分のみのため、それだけを返してもらうようにした。
     // 月選択プルダウン用の年月一覧（全期間）は別途まとめて届く（行データそのものではなく
     // 年月の文字列一覧だけなので軽い）。
-    const url = withKey(GAS_URL + '?type=ukakezan_all');
-    const data = await fetchJSONP(url);
-    cachedUkakezanAll = (data && data.list) ? data.list : [];
-    cachedUkakezanYms = (data && data.allYms) ? data.allYms : [];
-    ukakezanLoaded = true;
+    await loadLazyTab_('ukakezan');
     populateUkakezanYmSelect();
   } catch (err) {
     document.getElementById('ukakezan-body').innerHTML =
@@ -2940,10 +3033,7 @@ async function openFuelTab(el) {
 
   document.getElementById('fuel-chart-title').textContent = '読み込み中...';
   try {
-    const url = withKey(GAS_URL + '?type=fuel_all');
-    const data = await fetchJSONP(url);
-    cachedFuelRows = (data && data.rows) ? data.rows : [];
-    fuelDataLoaded = true;
+    await loadLazyTab_('fuel');
     renderFuelView();
   } catch (err) {
     document.getElementById('fuel-chart-title').textContent = 'データ取得に失敗しました';
