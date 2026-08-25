@@ -348,12 +348,19 @@
     background: var(--card);
   }
   .hr-attach-drop:hover { border-color: var(--accent); }
-  /* モーダル内の処理中表示（全画面オーバーレイを出さずに進捗を見せる） */
+  /* 処理中の表示。モーダルの末尾に追記すると縦長のモーダルでは画面外に出てしまうため、
+     画面の中央に固定して必ず目に入るようにする */
   .modal-busy {
-    display: flex; align-items: center; gap: 8px; margin-top: 12px;
-    font-size: 12px; color: var(--accent); font-weight: 600;
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 410; display: flex; align-items: center; gap: 10px;
+    padding: 16px 26px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+    font-size: 14px; font-weight: 600; color: var(--primary);
+    max-width: min(90vw, 340px); text-align: left;
   }
-  .modal-busy .spinner-sm { width: 14px; height: 14px; margin: 0; border-width: 2px; }
+  .modal-busy .spinner-sm { width: 16px; height: 16px; margin: 0; border-width: 2px; flex-shrink: 0; }
+  /* 処理中はモーダル本体を薄くし、操作を受け付けないようにする */
+  .modal-box.is-busy { opacity: 0.45; pointer-events: none; }
   .hr-attach-note { font-size: 11px; color: var(--muted2); margin-top: 6px; }
   .hr-attach-pending { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   .hr-attach-pending div { font-size: 12px; color: var(--accent); }
@@ -1411,6 +1418,9 @@ function openModal_(html) {
   document.getElementById('modal-overlay').classList.add('active');
 }
 function closeModal() {
+  // 処理中の表示はモーダル本体の外（オーバーレイ直下）に置いているため、
+  // 中身を空にするだけでは消えない。明示的に片付ける。
+  if (typeof clearModalBusy_ === 'function') clearModalBusy_();
   document.getElementById('modal-overlay').classList.remove('active');
   document.getElementById('modal-box').innerHTML = '';
 }
@@ -1484,7 +1494,7 @@ async function openHrModal_(existing) {
   let html = '<h3>' + (isEdit ? '人事コメントを編集' : '人事コメントを追加') + '</h3>';
   // 部署を変えると書き込み先のシートが変わってしまうため、編集時は部署を固定する
   html += '<div class="modal-field"><label>部署</label><select id="hr-modal-dept" onchange="onHrModalDeptChange_()"'
-    + (isEdit ? ' disabled data-locked="1"' : '') + '>' + optionsHtml(depts, curDept) + '</select></div>';
+    + (isEdit ? ' disabled' : '') + '>' + optionsHtml(depts, curDept) + '</select></div>';
   html += '<div class="modal-field"><label>対象年月</label><input type="month" id="hr-modal-ym" value="' + esc(ym) + '"></div>';
   html += '<div class="modal-field" id="hr-modal-unit-field" style="display:none;"><label>部署（ユニット）</label>'
     + '<select id="hr-modal-unit"></select></div>';
@@ -1650,29 +1660,29 @@ function applyHrRowChange_(row, removeId) {
 }
 
 // モーダルを「処理中」表示にする（全画面オーバーレイは出さず、モーダル内で進捗を見せる）
+// 進捗は画面の中央に固定して出す。以前はモーダルの末尾に追記していたため、
+// 人事コメントのように縦に長いモーダルでは画面外に出てしまい、保存時に何も
+// 起きていないように見えていた。
 function setModalBusy_(message) {
+  const overlay = document.getElementById('modal-overlay');
   const box = document.getElementById('modal-box');
-  if (!box) return;
-  box.querySelectorAll('button, input, textarea, select').forEach(function(el) { el.disabled = true; });
+  if (!overlay || !box) return;
+  box.classList.add('is-busy'); // 操作を受け付けないよう薄くする（CSSでpointer-events:none）
   var bar = document.getElementById('modal-busy');
   if (!bar) {
     bar = document.createElement('div');
     bar.id = 'modal-busy';
     bar.className = 'modal-busy';
-    box.appendChild(bar);
+    overlay.appendChild(bar);
   }
   bar.innerHTML = '<span class="spinner-sm"></span><span>' + esc(message) + '</span>';
 }
 
 function clearModalBusy_() {
   const box = document.getElementById('modal-box');
-  if (!box) return;
-  box.querySelectorAll('button, input, textarea, select').forEach(function(el) { el.disabled = false; });
+  if (box) box.classList.remove('is-busy');
   const bar = document.getElementById('modal-busy');
   if (bar) bar.remove();
-  // 編集時の部署欄は、もともと変更不可なので無効のまま戻す
-  const deptEl = document.getElementById('hr-modal-dept');
-  if (deptEl && deptEl.getAttribute('data-locked') === '1') deptEl.disabled = true;
 }
 
 async function saveHr_(id) {
