@@ -480,6 +480,14 @@
   }
   .kanrineage-item-edit:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
 
+  /* 一覧表（新規案件・受注案件・施設見学など）の行編集ボタン（共通） */
+  .table-edit-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--card); color: var(--muted); cursor: pointer;
+  }
+  .table-edit-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
+
   /* 追加・編集で共通利用するモーダル */
   .modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -646,6 +654,7 @@
       <select id="kengaku-ym-select" onchange="onKengakuMonthChange()">
         <option value="">すべて表示</option>
       </select>
+      <button class="btn btn-primary" style="margin-left:auto;" onclick="openKengakuModal_(null)">＋ 新規追加</button>
     </div>
 
     <div id="kengaku-body"><div class="empty">タブを開くと、施設見学の全件一覧が表示されます</div></div>
@@ -2133,7 +2142,7 @@ function renderKengaku(list) {
     + '<thead><tr>'
     + '<th>月</th><th>見学日</th>'
     + '<th>対象企業名</th><th>見学施設</th>'
-    + '<th>担当者</th></tr></thead><tbody>';
+    + '<th>担当者</th><th></th></tr></thead><tbody>';
 
   sorted.forEach(function(r) {
     html += '<tr>'
@@ -2142,11 +2151,92 @@ function renderKengaku(list) {
       + '<td>' + esc(r.company) + '</td>'
       + '<td>' + esc(r.facility) + '</td>'
       + '<td>' + esc(r.person) + '</td>'
+      + '<td><span class="table-edit-btn" title="編集" onclick="openKengakuEditModal_(\'' + esc(r.id) + '\')">✎</span></td>'
       + '</tr>';
   });
 
   html += '</tbody></table></div></div>';
   body.innerHTML = html;
+}
+
+// ============================================================
+// 施設見学：ダッシュボードからの追加・編集・削除
+// ============================================================
+function openKengakuEditModal_(id) {
+  const item = cachedKengakuAll.find(function(r) { return r.id === id; });
+  if (!item) { alert('データが見つかりませんでした。再読み込みしてください。'); return; }
+  openKengakuModal_(item);
+}
+
+function openKengakuModal_(existing) {
+  const isEdit = !!existing;
+  const ym = existing ? existing.ym : (document.getElementById('ym-select').value || '');
+  const date = existing ? existing.date : '';
+  const company = existing ? existing.company : '';
+  const facility = existing ? existing.facility : '';
+  const person = existing ? existing.person : '';
+  const id = existing ? existing.id : '';
+
+  let html = '<h3>' + (isEdit ? '施設見学を編集' : '施設見学を新規追加') + '</h3>';
+  html += '<div class="modal-field"><label>対象月</label><input type="month" id="kg-modal-ym" value="' + esc(ym) + '"></div>';
+  html += '<div class="modal-field"><label>見学日</label><input type="date" id="kg-modal-date" value="' + esc(date) + '"></div>';
+  html += '<div class="modal-field"><label>対象企業名</label><input type="text" id="kg-modal-company" value="' + esc(company) + '"></div>';
+  html += '<div class="modal-field"><label>見学施設（複数ある場合はまとめて入力可）</label><input type="text" id="kg-modal-facility" value="' + esc(facility) + '"></div>';
+  html += '<div class="modal-field"><label>担当者</label><input type="text" id="kg-modal-person" value="' + esc(person) + '"></div>';
+  html += '<div class="modal-actions">';
+  if (isEdit) html += '<button class="btn btn-danger" onclick="deleteKengaku_(\'' + esc(id) + '\')">削除</button>';
+  html += '<button class="btn" onclick="closeModal()">キャンセル</button>';
+  html += '<button class="btn btn-primary" onclick="saveKengaku_(\'' + esc(id) + '\')">保存</button>';
+  html += '</div>';
+  openModal_(html);
+}
+
+function saveKengaku_(id) {
+  const ym = document.getElementById('kg-modal-ym').value;
+  const date = document.getElementById('kg-modal-date').value;
+  const company = document.getElementById('kg-modal-company').value.trim();
+  const facility = document.getElementById('kg-modal-facility').value.trim();
+  const person = document.getElementById('kg-modal-person').value.trim();
+  if (!ym || !company) { alert('対象月と対象企業名を入力してください'); return; }
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'save_kengaku', key: ACCESS_KEY, id: id || '',
+      ym: ym, date: date, company: company, facility: facility, person: person
+    })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        cachedKengakuAll = data.list || [];
+        closeModal();
+        populateKengakuYmSelect();
+      } else {
+        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { alert('保存に失敗しました：' + err.message); });
+}
+
+function deleteKengaku_(id) {
+  if (!confirm('この記録を削除しますか？この操作は元に戻せません。')) return;
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'delete_kengaku', key: ACCESS_KEY, id: id })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        cachedKengakuAll = data.list || [];
+        closeModal();
+        populateKengakuYmSelect();
+      } else {
+        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { alert('削除に失敗しました：' + err.message); });
 }
 
 // ============================================================
