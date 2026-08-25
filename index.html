@@ -326,33 +326,31 @@
     background: var(--bg-subtle); border: 1px solid var(--border); color: var(--accent);
   }
   .hr-link-chip:hover { background: var(--success-bg); border-color: var(--accent); }
-  /* 写真/リンクの1件ずつを囲み、右上に削除バッジを重ねるためのラッパー */
+  /* 写真/リンクの1件ずつを囲むラッパー（一覧では閲覧のみ。追加・削除はモーダルから） */
   .hr-photo-wrap { position: relative; display: inline-block; margin-right: 4px; }
   .hr-photo-wrap .hr-photo-thumb, .hr-photo-wrap .hr-link-chip { margin-right: 0; }
-  .hr-photo-del {
-    position: absolute; top: -6px; right: -6px; width: 15px; height: 15px;
-    border-radius: 50%; background: var(--danger); color: #fff;
-    font-size: 10px; line-height: 15px; text-align: center; cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+
+  /* モーダル内の写真／リンク管理 */
+  .hr-attach-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .hr-attach-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-subtle);
   }
-  /* アップロード保存中（楽観的UI更新でプレビュー表示している間）のミニスピナー */
-  .hr-photo-pending {
-    position: absolute; top: -6px; right: -6px; width: 15px; height: 15px;
-    border-radius: 50%; background: var(--card); border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center;
+  .hr-attach-row.to-remove { opacity: 0.45; border-style: dashed; }
+  .hr-attach-row .hr-attach-label {
+    flex: 1; min-width: 0; font-size: 12px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .hr-photo-pending .spinner-sm {
-    width: 9px; height: 9px; margin: 0; border-width: 2px;
+  .hr-attach-row img { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); }
+  .hr-attach-drop {
+    display: block; border: 1px dashed var(--border); border-radius: 8px;
+    padding: 14px 10px; text-align: center; color: var(--muted); cursor: pointer; font-size: 12px;
+    background: var(--card);
   }
-  .hr-photo-del:hover { background: var(--danger-text); }
-  /* ダッシュボードから直接写真を追加するボタン（クリック/ドラッグ&ドロップ両対応） */
-  .hr-photo-add {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 32px; height: 32px; border-radius: 4px;
-    border: 1px dashed var(--border); color: var(--muted); cursor: pointer;
-    font-size: 18px; line-height: 1; background: var(--card);
-  }
-  .hr-photo-add:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
+  .hr-attach-drop:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
+  .hr-attach-note { font-size: 11px; color: var(--muted2); margin-top: 6px; }
+  .hr-attach-pending { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .hr-attach-pending div { font-size: 12px; color: var(--accent); }
   .lightbox-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
     z-index: 300; align-items: center; justify-content: center; cursor: zoom-out;
@@ -1306,7 +1304,6 @@ function renderHr() {
   }
   const catClass = HR_CAT_CLASS;
   const depts = [...new Set(cachedHr.map(r => r.dept))];
-  window._hrPhotoTargets = []; // ダッシュボードからの写真アップロード時に行を特定するための対応表
   let html = '';
   depts.forEach(dept => {
     const items = cachedHr.filter(r => r.dept === dept && r.content);
@@ -1324,37 +1321,19 @@ function renderHr() {
     items.forEach(item => {
       const cls = catClass[item.category] || '';
       const statusCls = item.status ? 'hr-status-' + item.status : '';
-      // この行の写真アップロード/削除ボタンから、後で対象のitemを引けるよう登録しておく
-      const targetIdx = window._hrPhotoTargets.length;
-      window._hrPhotoTargets.push(item);
 
-      const photoSlots = [item.photo1, item.photo2, item.photo3];
-      const filledHtml = photoSlots.map(function(url, slot) {
+      // 写真／リンクは閲覧のみ。追加・削除は「＋ 新規追加」または各行の編集モーダルから行う。
+      // 添付が無い行は何も表示しない（プレースホルダも出さない）。
+      const photosHtml = [item.photo1, item.photo2, item.photo3].map(function(url) {
         if (!url) return '';
-        // アップロード処理中（楽観的UI更新でプレビュー表示している間）は削除ボタンの代わりに
-        // 保存中スピナーを出し、確定前の写真を誤って消せないようにする
-        const pending = window._hrPendingKeys && window._hrPendingKeys.has(targetIdx + ':' + slot);
-        const badge = pending
-          ? '<span class="hr-photo-pending"><span class="spinner-sm"></span></span>'
-          : '<span class="hr-photo-del" title="削除" onclick="event.stopPropagation(); deleteHrPhoto_(' + targetIdx + ', ' + slot + ')">×</span>';
-        if (isImageUrl_(url) || url.indexOf('blob:') === 0) {
-          return '<span class="hr-photo-wrap">' + badge
-            + '<img src="' + esc(url) + '" class="hr-photo-thumb"' + (pending ? '' : ' onclick="openLightbox(\'' + esc(url) + '\')"') + ' loading="lazy"></span>';
+        if (isImageUrl_(url)) {
+          return '<span class="hr-photo-wrap">'
+            + '<img src="' + esc(url) + '" class="hr-photo-thumb" onclick="openLightbox(\'' + esc(url) + '\')" loading="lazy"></span>';
         }
         // 画像以外のURL（資料・記事など）は新しいタブで開くリンクチップとして表示する
-        return '<span class="hr-photo-wrap">' + badge
+        return '<span class="hr-photo-wrap">'
           + '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="hr-link-chip" title="' + esc(url) + '">🔗</a></span>';
       }).join('');
-      // 空きスロットがあれば、ダッシュボード上から直接写真を追加できるボタン（クリック/ドラッグ&ドロップ両対応）を出す
-      let addHtml = '';
-      if (photoSlots.filter(Boolean).length < 3) {
-        addHtml = '<label class="hr-photo-add" id="hr-photo-add-' + targetIdx + '" title="写真を追加（クリックまたはドラッグ&ドロップ）"'
-          + ' ondragover="event.preventDefault();" ondrop="onHrPhotoDrop_(event, ' + targetIdx + ')">'
-          + '+<input type="file" accept="image/*" style="display:none" onchange="onHrPhotoInputChange_(this, ' + targetIdx + ')"></label>';
-      }
-      const photosHtml = (filledHtml || addHtml)
-        ? (filledHtml + addHtml)
-        : '<span style="color:var(--muted);font-size:12px;">-</span>';
       html += '<div class="hr-item ' + cls + gridCls + '">'
         + (hasUnit ? '<div class="hr-field"><span class="hr-field-label">部署</span><span class="hr-field-value hr-fit">' + (item.unit ? esc(item.unit) : '-') + '</span></div>' : '')
         + '<div class="hr-field"><span class="hr-field-label">対象者</span><span class="hr-field-value hr-fit">' + (item.targetPerson ? esc(item.targetPerson) : '-') + '</span></div>'
@@ -1430,74 +1409,6 @@ function closeModal() {
   document.getElementById('modal-box').innerHTML = '';
 }
 
-// ============================================================
-// 人事コメントの写真をダッシュボードから直接アップロードする
-// （Googleドライブ・スプレッドシートを操作せず、その場で写真1〜3の空き欄に追加する）
-// ============================================================
-function onHrPhotoInputChange_(inputEl, idx) {
-  const file = inputEl.files && inputEl.files[0];
-  if (file) uploadHrPhoto_(idx, file);
-  inputEl.value = '';
-}
-
-function onHrPhotoDrop_(ev, idx) {
-  ev.preventDefault();
-  const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
-  if (file) uploadHrPhoto_(idx, file);
-}
-
-// 楽観的UI更新：ファイルを選んだ瞬間にブラウザ内だけでプレビュー表示し、
-// 実際の保存（Driveへのアップロード等、数秒かかる処理）は裏側で進める。
-// 失敗した場合のみ、プレビューを取り消してエラーを表示する。
-function uploadHrPhoto_(idx, file) {
-  const item = window._hrPhotoTargets && window._hrPhotoTargets[idx];
-  if (!item) return;
-  if (!file.type || file.type.indexOf('image/') !== 0) {
-    alert('画像ファイルを選択してください');
-    return;
-  }
-
-  const slot = !item.photo1 ? 0 : (!item.photo2 ? 1 : 2);
-  const photoKey = 'photo' + (slot + 1);
-  const previewUrl = URL.createObjectURL(file);
-
-  window._hrPendingKeys = window._hrPendingKeys || new Set();
-  window._hrPendingKeys.add(idx + ':' + slot);
-  item[photoKey] = previewUrl;
-  renderHr();
-
-  resizeImageForUpload_(file, 1600).then(function(base64) {
-    return fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        key: ACCESS_KEY,
-        dept: item.dept, id: item.id,
-        targetPerson: item.targetPerson || '',
-        imageBase64: base64, mimeType: 'image/jpeg'
-      })
-    });
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      window._hrPendingKeys.delete(idx + ':' + slot);
-      URL.revokeObjectURL(previewUrl);
-      if (data.status === 'ok') {
-        item[photoKey] = data.photoUrl; // 本物のURLに静かに差し替える
-      } else {
-        item[photoKey] = ''; // 失敗したのでプレビューを取り消す
-        alert('アップロードに失敗しました：' + (data.message || '不明なエラー'));
-      }
-      renderHr();
-    })
-    .catch(function(err) {
-      window._hrPendingKeys.delete(idx + ':' + slot);
-      URL.revokeObjectURL(previewUrl);
-      item[photoKey] = '';
-      renderHr();
-      alert('アップロードに失敗しました：' + err.message);
-    });
-}
-
 // 画像をキャンバスで縮小し、Base64(JPEG)化する（スマホの高画質写真をそのまま送ると
 // 重くなるため、長辺が指定サイズを超える場合のみ縮小する）
 function resizeImageForUpload_(file, maxSize) {
@@ -1522,43 +1433,6 @@ function resizeImageForUpload_(file, maxSize) {
     reader.onerror = function() { reject(new Error('ファイルの読み込みに失敗しました')); };
     reader.readAsDataURL(file);
   });
-}
-
-// 人事コメントの写真を削除する（該当セルを空にし、GAS側でDrive上のファイルも削除する）
-function deleteHrPhoto_(idx, slot) {
-  const item = window._hrPhotoTargets && window._hrPhotoTargets[idx];
-  if (!item) return;
-  const photoKey = 'photo' + (slot + 1);
-  const url = item[photoKey];
-  if (!url) return;
-  if (!confirm('この写真を削除しますか？この操作は元に戻せません。')) return;
-
-  // 楽観的UI更新：確認後は即座に画面から消し、実際の削除は裏側で進める。
-  // 失敗した場合のみ元に戻す。
-  item[photoKey] = '';
-  renderHr();
-
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      action: 'delete_photo', key: ACCESS_KEY,
-      dept: item.dept, id: item.id,
-      photoUrl: url
-    })
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.status !== 'ok') {
-        item[photoKey] = url; // 失敗したので元に戻す
-        renderHr();
-        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) {
-      item[photoKey] = url;
-      renderHr();
-      alert('削除に失敗しました：' + err.message);
-    });
 }
 
 // ============================================================
@@ -1618,6 +1492,32 @@ async function openHrModal_(existing) {
   html += '<div class="modal-field"><label>内容（必須）</label><textarea id="hr-modal-content">' + esc(v('content')) + '</textarea></div>';
   html += '<div class="modal-field"><label>対応状況</label><select id="hr-modal-status">'
     + '<option value="">未設定</option>' + optionsHtml(cfg.statusOptions, v('status')) + '</select></div>';
+
+  // 写真／リンク（最大3件）。既存分は「削除」で外し、新規はここから追加する
+  const slots = [v('photo1'), v('photo2'), v('photo3')];
+  html += '<div class="modal-field"><label>写真／リンク（最大3件）</label>';
+  html += '<div class="hr-attach-list" id="hr-attach-list">';
+  slots.forEach(function(url, i) {
+    if (!url) return;
+    const thumb = isImageUrl_(url)
+      ? '<img src="' + esc(url) + '" loading="lazy">'
+      : '<span class="hr-link-chip">🔗</span>';
+    html += '<div class="hr-attach-row" id="hr-attach-row-' + i + '" data-slot="' + i + '" data-remove="0">'
+      + thumb
+      + '<span class="hr-attach-label" title="' + esc(url) + '">' + esc(url) + '</span>'
+      + '<button type="button" class="btn btn-danger" style="font-size:11px;padding:3px 10px;"'
+      + ' onclick="toggleHrAttachRemove_(' + i + ')" id="hr-attach-btn-' + i + '">削除</button>'
+      + '</div>';
+  });
+  html += '</div>';
+  html += '<label class="hr-attach-drop" ondragover="event.preventDefault();" ondrop="onHrAttachDrop_(event)">'
+    + '＋ 画像を追加（クリックまたはドラッグ&ドロップ・複数選択可）'
+    + '<input type="file" accept="image/*" multiple style="display:none" onchange="onHrAttachFiles_(this)"></label>';
+  html += '<div class="hr-attach-pending" id="hr-attach-pending"></div>';
+  html += '<input type="text" id="hr-modal-link" placeholder="リンクを追加（資料・記事などのURL）" style="margin-top:6px;">';
+  html += '<div class="hr-attach-note">保存すると反映されます。写真の追加・削除はこの画面からのみ行えます。</div>';
+  html += '</div>';
+
   html += '<div class="modal-actions">';
   if (isEdit) html += '<button class="btn btn-danger" onclick="deleteHr_(\'' + esc(id) + '\')">削除</button>';
   html += '<button class="btn" onclick="closeModal()">キャンセル</button>';
@@ -1625,7 +1525,70 @@ async function openHrModal_(existing) {
   html += '</div>';
   openModal_(html);
 
+  window._hrAttachFiles = []; // 保存時にアップロードする画像（モーダルを開くたびに初期化）
   onHrModalDeptChange_(v('unit'));
+}
+
+// 既存の写真／リンクの「削除」指定をその場で切り替える（実際の削除は保存時）
+function toggleHrAttachRemove_(slot) {
+  const row = document.getElementById('hr-attach-row-' + slot);
+  const btn = document.getElementById('hr-attach-btn-' + slot);
+  if (!row || !btn) return;
+  const willRemove = row.getAttribute('data-remove') !== '1';
+  row.setAttribute('data-remove', willRemove ? '1' : '0');
+  row.classList.toggle('to-remove', willRemove);
+  btn.textContent = willRemove ? '取り消す' : '削除';
+  btn.className = willRemove ? 'btn' : 'btn btn-danger';
+  btn.style.fontSize = '11px';
+  btn.style.padding = '3px 10px';
+}
+
+function onHrAttachFiles_(inputEl) {
+  addHrAttachFiles_(inputEl.files);
+  inputEl.value = '';
+}
+
+function onHrAttachDrop_(ev) {
+  ev.preventDefault();
+  if (ev.dataTransfer && ev.dataTransfer.files) addHrAttachFiles_(ev.dataTransfer.files);
+}
+
+// 追加予定の画像をモーダル内に溜める（空き枠を超える分は受け付けない）
+function addHrAttachFiles_(fileList) {
+  window._hrAttachFiles = window._hrAttachFiles || [];
+  const free = hrAttachFreeSlots_();
+  Array.prototype.forEach.call(fileList || [], function(file) {
+    if (!file.type || file.type.indexOf('image/') !== 0) return;
+    if (window._hrAttachFiles.length >= free) return;
+    window._hrAttachFiles.push(file);
+  });
+  renderHrAttachPending_();
+}
+
+// 保存後に空く枠の数（既存の残す分と、入力中のリンクを差し引いた残り）
+function hrAttachFreeSlots_() {
+  const rows = document.querySelectorAll('#hr-attach-list .hr-attach-row');
+  var keep = 0;
+  rows.forEach(function(r) { if (r.getAttribute('data-remove') !== '1') keep++; });
+  const linkEl = document.getElementById('hr-modal-link');
+  const linkCount = (linkEl && linkEl.value.trim()) ? 1 : 0;
+  return Math.max(0, 3 - keep - linkCount);
+}
+
+function renderHrAttachPending_() {
+  const el = document.getElementById('hr-attach-pending');
+  if (!el) return;
+  const files = window._hrAttachFiles || [];
+  el.innerHTML = files.map(function(f, i) {
+    return '<div>追加予定: ' + esc(f.name)
+      + ' <span style="cursor:pointer;color:var(--danger-text);" onclick="removeHrAttachFile_(' + i + ')">×</span></div>';
+  }).join('');
+}
+
+function removeHrAttachFile_(idx) {
+  if (!window._hrAttachFiles) return;
+  window._hrAttachFiles.splice(idx, 1);
+  renderHrAttachPending_();
 }
 
 // 選択中の部署に「部署（ユニット）」欄があるかどうかで、その入力欄の表示を切り替える
@@ -1656,7 +1619,7 @@ async function refreshHrAfterEdit_() {
   await loadAll();
 }
 
-function saveHr_(id) {
+async function saveHr_(id) {
   const dept = document.getElementById('hr-modal-dept').value;
   const ym = document.getElementById('hr-modal-ym').value;
   const unitEl = document.getElementById('hr-modal-unit');
@@ -1668,26 +1631,60 @@ function saveHr_(id) {
   const status = document.getElementById('hr-modal-status').value;
   if (!dept || !ym || !content) { alert('部署・対象年月・内容を入力してください'); return; }
 
+  // 写真／リンクの操作内容をまとめる。削除は「何枠目を消すか」という位置指定で送り、
+  // 残す枠にはGAS側でも一切触れない（セルのリンク書式が壊れないようにするため）
+  const photoOps = ['keep', 'keep', 'keep'];
+  document.querySelectorAll('#hr-attach-list .hr-attach-row').forEach(function(row) {
+    if (row.getAttribute('data-remove') === '1') {
+      photoOps[Number(row.getAttribute('data-slot'))] = 'remove';
+    }
+  });
+  const linkVal = document.getElementById('hr-modal-link').value.trim();
+  const newLinks = linkVal ? [linkVal] : [];
+
+  // 枠は3件までなので、超える場合は黙って切り捨てずに知らせる
+  const files = window._hrAttachFiles || [];
+  const keepCount = photoOps.filter(function(op, i) {
+    const row = document.getElementById('hr-attach-row-' + i);
+    return row && op === 'keep';
+  }).length;
+  const total = keepCount + newLinks.length + files.length;
+  if (total > 3) {
+    alert('写真／リンクは合計3件までです（現在 ' + total + '件）。\n不要なものを削除してから保存してください。');
+    return;
+  }
+
   setStatus('保存中...', true);
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      action: 'save_hr', key: ACCESS_KEY, id: id || '',
-      dept: dept, ym: ym, unit: unit, category: category,
-      targetPerson: targetPerson, content: content, status: status
-    })
-  }).then(function(res) { return res.json(); })
-    .then(async function(data) {
-      setStatus('', false);
-      if (data.status === 'ok') {
-        closeModal();
-        await refreshHrAfterEdit_();
-      } else {
-        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { setStatus('', false); alert('保存に失敗しました：' + err.message); });
+  try {
+    const newImages = [];
+    for (var i = 0; i < files.length; i++) {
+      const base64 = await resizeImageForUpload_(files[i], 1600);
+      newImages.push({ base64: base64, mimeType: 'image/jpeg' });
+    }
+
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'save_hr', key: ACCESS_KEY, id: id || '',
+        dept: dept, ym: ym, unit: unit, category: category,
+        targetPerson: targetPerson, content: content, status: status,
+        photoOps: photoOps, newLinks: newLinks, newImages: newImages
+      })
+    });
+    const data = await res.json();
+    setStatus('', false);
+    if (data.status === 'ok') {
+      window._hrAttachFiles = [];
+      closeModal();
+      await refreshHrAfterEdit_();
+    } else {
+      alert('保存に失敗しました：' + (data.message || '不明なエラー'));
+    }
+  } catch (err) {
+    setStatus('', false);
+    alert('保存に失敗しました：' + err.message);
+  }
 }
 
 function deleteHr_(id) {
