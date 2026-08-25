@@ -344,10 +344,16 @@
   .hr-attach-row img { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); }
   .hr-attach-drop {
     display: block; border: 1px dashed var(--border); border-radius: 8px;
-    padding: 14px 10px; text-align: center; color: var(--muted); cursor: pointer; font-size: 12px;
+    padding: 12px 10px; text-align: center; color: var(--muted); font-size: 12px;
     background: var(--card);
   }
-  .hr-attach-drop:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
+  .hr-attach-drop:hover { border-color: var(--accent); }
+  /* モーダル内の処理中表示（全画面オーバーレイを出さずに進捗を見せる） */
+  .modal-busy {
+    display: flex; align-items: center; gap: 8px; margin-top: 12px;
+    font-size: 12px; color: var(--accent); font-weight: 600;
+  }
+  .modal-busy .spinner-sm { width: 14px; height: 14px; margin: 0; border-width: 2px; }
   .hr-attach-note { font-size: 11px; color: var(--muted2); margin-top: 6px; }
   .hr-attach-pending { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   .hr-attach-pending div { font-size: 12px; color: var(--accent); }
@@ -1478,7 +1484,7 @@ async function openHrModal_(existing) {
   let html = '<h3>' + (isEdit ? '人事コメントを編集' : '人事コメントを追加') + '</h3>';
   // 部署を変えると書き込み先のシートが変わってしまうため、編集時は部署を固定する
   html += '<div class="modal-field"><label>部署</label><select id="hr-modal-dept" onchange="onHrModalDeptChange_()"'
-    + (isEdit ? ' disabled' : '') + '>' + optionsHtml(depts, curDept) + '</select></div>';
+    + (isEdit ? ' disabled data-locked="1"' : '') + '>' + optionsHtml(depts, curDept) + '</select></div>';
   html += '<div class="modal-field"><label>対象年月</label><input type="month" id="hr-modal-ym" value="' + esc(ym) + '"></div>';
   html += '<div class="modal-field" id="hr-modal-unit-field" style="display:none;"><label>部署（ユニット）</label>'
     + '<select id="hr-modal-unit"></select></div>';
@@ -1510,9 +1516,14 @@ async function openHrModal_(existing) {
       + '</div>';
   });
   html += '</div>';
-  html += '<label class="hr-attach-drop" ondragover="event.preventDefault();" ondrop="onHrAttachDrop_(event)">'
-    + '＋ 画像を追加（クリックまたはドラッグ&ドロップ・複数選択可）'
-    + '<input type="file" accept="image/*" multiple style="display:none" onchange="onHrAttachFiles_(this)"></label>';
+  // 画像の選択は明示的にボタンを押したときだけ開く（枠全体をクリック対象にすると、
+  // 画面を操作しているだけでファイル選択ダイアログが開いてしまい煩わしいため）。
+  // ドラッグ&ドロップは枠全体で受け付ける。
+  html += '<div class="hr-attach-drop" ondragover="event.preventDefault();" ondrop="onHrAttachDrop_(event)">'
+    + '<button type="button" class="btn" onclick="document.getElementById(\'hr-attach-input\').click()">画像を選ぶ</button>'
+    + '<div class="hr-attach-note" style="margin-top:6px;">ここにドラッグ&ドロップでも追加できます（複数選択可）</div>'
+    + '<input type="file" id="hr-attach-input" accept="image/*" multiple style="display:none" onchange="onHrAttachFiles_(this)">'
+    + '</div>';
   html += '<div class="hr-attach-pending" id="hr-attach-pending"></div>';
   html += '<input type="text" id="hr-modal-link" placeholder="リンクを追加（資料・記事などのURL）" style="margin-top:6px;">';
   html += '<div class="hr-attach-note">保存すると反映されます。写真の追加・削除はこの画面からのみ行えます。</div>';
@@ -1613,10 +1624,55 @@ function onHrModalDeptChange_(presetUnit) {
 
 // 保存・削除の後は、人事データが月次の一括取得に含まれるため、
 // その月のキャッシュを捨てたうえで取り直す
-async function refreshHrAfterEdit_() {
+// 保存・削除の直後は、通信をやり直さずに手元のデータをその場で書き換えて描き直す。
+// 以前は loadAll() で全体を再読み込みしていたが、部署別グラフ・前月比・次回アクション・
+// AIレポートまで巻き込むため数秒かかり、全画面オーバーレイのせいで固まったように見えていた。
+// row: 保存後の行（GASが返す。削除時はnull）／removeId: 削除した行のID
+function applyHrRowChange_(row, removeId) {
   const ym = document.getElementById('ym-select').value;
-  if (ym && cachedAllFlatByYm[ym]) delete cachedAllFlatByYm[ym];
-  await loadAll();
+  const targetId = removeId || (row && row.id);
+  if (targetId) {
+    const idx = cachedHr.findIndex(function(r) { return r.id === targetId; });
+    if (idx >= 0) cachedHr.splice(idx, 1);
+  }
+  // 表示中の月と同じ行だけ一覧に載せる（別の月へ移した場合は一覧から消えるのが正しい）
+  if (row && row.ym === ym) cachedHr.push(row);
+
+  // 表示中の月のキャッシュも合わせて更新しておく（月を切り替えて戻ったときの不整合を防ぐ）
+  const cached = cachedAllFlatByYm[ym];
+  if (cached) cached.hr = cachedHr.slice();
+
+  renderHr();
+  // 全部署サマリーの「人事コメントあり」バッジも人事データを見ているため描き直す（通信なし）
+  try { renderSummary(ALL_DEPTS); } catch (e) { /* サマリー未描画時は無視 */ }
+  document.getElementById('header-ym').textContent =
+    '実績 ' + cachedPerf.length + '件・人事 ' + cachedHr.length + '件';
+}
+
+// モーダルを「処理中」表示にする（全画面オーバーレイは出さず、モーダル内で進捗を見せる）
+function setModalBusy_(message) {
+  const box = document.getElementById('modal-box');
+  if (!box) return;
+  box.querySelectorAll('button, input, textarea, select').forEach(function(el) { el.disabled = true; });
+  var bar = document.getElementById('modal-busy');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'modal-busy';
+    bar.className = 'modal-busy';
+    box.appendChild(bar);
+  }
+  bar.innerHTML = '<span class="spinner-sm"></span><span>' + esc(message) + '</span>';
+}
+
+function clearModalBusy_() {
+  const box = document.getElementById('modal-box');
+  if (!box) return;
+  box.querySelectorAll('button, input, textarea, select').forEach(function(el) { el.disabled = false; });
+  const bar = document.getElementById('modal-busy');
+  if (bar) bar.remove();
+  // 編集時の部署欄は、もともと変更不可なので無効のまま戻す
+  const deptEl = document.getElementById('hr-modal-dept');
+  if (deptEl && deptEl.getAttribute('data-locked') === '1') deptEl.disabled = true;
 }
 
 async function saveHr_(id) {
@@ -1654,13 +1710,16 @@ async function saveHr_(id) {
     return;
   }
 
-  setStatus('保存中...', true);
   try {
     const newImages = [];
     for (var i = 0; i < files.length; i++) {
+      setModalBusy_('画像を準備しています…（' + (i + 1) + '/' + files.length + '）');
       const base64 = await resizeImageForUpload_(files[i], 1600);
       newImages.push({ base64: base64, mimeType: 'image/jpeg' });
     }
+    setModalBusy_(newImages.length
+      ? '保存しています…（画像のアップロードに数秒かかります）'
+      : '保存しています…');
 
     const res = await fetch(GAS_URL, {
       method: 'POST',
@@ -1673,40 +1732,43 @@ async function saveHr_(id) {
       })
     });
     const data = await res.json();
-    setStatus('', false);
-    if (data.status === 'ok') {
-      window._hrAttachFiles = [];
-      closeModal();
-      await refreshHrAfterEdit_();
-    } else {
+    if (data.status !== 'ok') {
+      clearModalBusy_();
       alert('保存に失敗しました：' + (data.message || '不明なエラー'));
+      return;
     }
+    window._hrAttachFiles = [];
+    applyHrRowChange_(data.row || null, id || null);
+    closeModal();
   } catch (err) {
-    setStatus('', false);
+    clearModalBusy_();
     alert('保存に失敗しました：' + err.message);
   }
 }
 
-function deleteHr_(id) {
+async function deleteHr_(id) {
   const dept = document.getElementById('hr-modal-dept').value;
   if (!confirm('この人事コメントを削除しますか？\n添付した写真もあわせて削除されます。この操作は元に戻せません。')) return;
 
-  setStatus('削除中...', true);
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'delete_hr', key: ACCESS_KEY, dept: dept, id: id })
-  }).then(function(res) { return res.json(); })
-    .then(async function(data) {
-      setStatus('', false);
-      if (data.status === 'ok') {
-        closeModal();
-        await refreshHrAfterEdit_();
-      } else {
-        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { setStatus('', false); alert('削除に失敗しました：' + err.message); });
+  try {
+    setModalBusy_('削除しています…');
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'delete_hr', key: ACCESS_KEY, dept: dept, id: id })
+    });
+    const data = await res.json();
+    if (data.status !== 'ok') {
+      clearModalBusy_();
+      alert('削除に失敗しました：' + (data.message || '不明なエラー'));
+      return;
+    }
+    applyHrRowChange_(null, id);
+    closeModal();
+  } catch (err) {
+    clearModalBusy_();
+    alert('削除に失敗しました：' + err.message);
+  }
 }
 
 // ============================================================
