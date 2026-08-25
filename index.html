@@ -1417,6 +1417,31 @@ function openModal_(html) {
   document.getElementById('modal-box').innerHTML = html;
   document.getElementById('modal-overlay').classList.add('active');
 }
+// モーダルからの保存・削除に共通の送信処理。
+// 処理中は画面中央に進捗を出してモーダルを操作不能にし、成功したら
+// applyResult(応答データ) で画面を更新してから閉じる。
+async function submitModal_(payload, busyMessage, failMessage, applyResult) {
+  try {
+    setModalBusy_(busyMessage);
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status !== 'ok') {
+      clearModalBusy_();
+      alert(failMessage + '：' + (data.message || '不明なエラー'));
+      return;
+    }
+    applyResult(data);
+    closeModal();
+  } catch (err) {
+    clearModalBusy_();
+    alert(failMessage + '：' + err.message);
+  }
+}
+
 function closeModal() {
   // 処理中の表示はモーダル本体の外（オーバーレイ直下）に置いているため、
   // 中身を空にするだけでは消えない。明示的に片付ける。
@@ -2137,47 +2162,27 @@ function saveShinki_(id) {
   const propertyName = val('propertyName');
   if (!date || !propertyName) { alert('発見日と物件名を入力してください'); return; }
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      action: 'save_shinki', key: ACCESS_KEY, id: id || '',
+  return submitModal_(
+    { action: 'save_shinki', key: ACCESS_KEY, id: id || '',
       date: date, propertyName: propertyName,
       rank: val('rank'), result: val('result'), provider: val('provider'),
       source: val('source'), place: val('place'), address: val('address'),
       siteStatus: val('siteStatus'), salesPerson: val('salesPerson'),
       clientPerson: val('clientPerson'), firstCheckDate: val('firstCheckDate'),
-      openDate: val('openDate'), progress: val('progress')
-    })
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.status === 'ok') {
-        closeModal();
-        refreshShinkiAfterEdit_(data.list);
-      } else {
-        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { alert('保存に失敗しました：' + err.message); });
+      openDate: val('openDate'), progress: val('progress') },
+    '保存しています…', '保存に失敗しました',
+    function(data) { refreshShinkiAfterEdit_(data.list); }
+  );
 }
 
 function deleteShinki_(id) {
   if (!confirm('この案件を削除しますか？この操作は元に戻せません。')) return;
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'delete_shinki', key: ACCESS_KEY, id: id })
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.status === 'ok') {
-        closeModal();
-        refreshShinkiAfterEdit_(data.list);
-      } else {
-        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { alert('削除に失敗しました：' + err.message); });
+  return submitModal_(
+    { action: 'delete_shinki', key: ACCESS_KEY, id: id },
+    '削除しています…', '削除に失敗しました',
+    function(data) { refreshShinkiAfterEdit_(data.list); }
+  );
 }
 
 // ============================================================
@@ -2214,12 +2219,20 @@ async function fetchJuchuRanking_() {
 
 // 追加・編集・削除の直後に呼ぶ：ランキングと月次データをどちらも取り直して再描画する
 // （金額変更はランキング側の集計にも影響するため、常に両方リフレッシュする）
-async function refreshJuchuAfterEdit_() {
+// 保存・削除の応答に含まれる集計結果で、受注案件タブをその場で描き直す（再取得なし）
+function applyJuchuViewResult_(data) {
   cachedJuchuMonthlyByYm = {};
-  try { await fetchJuchuRanking_(); } catch (e) {}
-  renderJuchuRanking();
+  if (data.ranking) {
+    cachedJuchuRanking = data.ranking.ranking || [];
+    juchuRankingLoaded = true;
+  }
   const ym = document.getElementById('juchu-ym-select').value;
-  if (ym) await onJuchuMonthChange();
+  if (ym && data.monthly) {
+    cachedJuchuMonthlyByYm[ym] = data.monthly;
+    renderJuchuMonthly(data.monthly);
+  } else {
+    renderJuchuRanking();
+  }
 }
 
 function populateJuchuYmSelect() {
@@ -2465,42 +2478,26 @@ function saveJuchu_(id) {
   const content = document.getElementById('jc-modal-content').value.trim();
   if (!kind || !ym || !name) { alert('区分・対象月・物件名を入力してください'); return; }
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      action: 'save_juchu', key: ACCESS_KEY, id: id || '',
-      kind: kind, ym: ym, name: name, item: item, date: date, amount: amount, person: person, content: content
-    })
-  }).then(function(res) { return res.json(); })
-    .then(async function(data) {
-      if (data.status === 'ok') {
-        closeModal();
-        await refreshJuchuAfterEdit_();
-      } else {
-        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { alert('保存に失敗しました：' + err.message); });
+  return submitModal_(
+    { action: 'save_juchu', key: ACCESS_KEY, id: id || '',
+      kind: kind, ym: ym, name: name, item: item, date: date,
+      amount: amount, person: person, content: content,
+      // 表示中の月を伝えると、GAS側が更新後の集計結果まで返してくれるため再取得が不要になる
+      viewYm: document.getElementById('juchu-ym-select').value || '' },
+    '保存しています…', '保存に失敗しました',
+    applyJuchuViewResult_
+  );
 }
 
 function deleteJuchu_(id) {
   if (!confirm('この記録を削除しますか？この操作は元に戻せません。')) return;
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'delete_juchu', key: ACCESS_KEY, id: id })
-  }).then(function(res) { return res.json(); })
-    .then(async function(data) {
-      if (data.status === 'ok') {
-        closeModal();
-        await refreshJuchuAfterEdit_();
-      } else {
-        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { alert('削除に失敗しました：' + err.message); });
+  return submitModal_(
+    { action: 'delete_juchu', key: ACCESS_KEY, id: id,
+      viewYm: document.getElementById('juchu-ym-select').value || '' },
+    '削除しています…', '削除に失敗しました',
+    applyJuchuViewResult_
+  );
 }
 
 // ============================================================
@@ -2641,44 +2638,22 @@ function saveKengaku_(id) {
   const person = document.getElementById('kg-modal-person').value.trim();
   if (!ym || !company) { alert('対象月と対象企業名を入力してください'); return; }
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      action: 'save_kengaku', key: ACCESS_KEY, id: id || '',
-      ym: ym, date: date, company: company, facility: facility, person: person
-    })
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.status === 'ok') {
-        cachedKengakuAll = data.list || [];
-        closeModal();
-        populateKengakuYmSelect();
-      } else {
-        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { alert('保存に失敗しました：' + err.message); });
+  return submitModal_(
+    { action: 'save_kengaku', key: ACCESS_KEY, id: id || '',
+      ym: ym, date: date, company: company, facility: facility, person: person },
+    '保存しています…', '保存に失敗しました',
+    function(data) { cachedKengakuAll = data.list || []; populateKengakuYmSelect(); }
+  );
 }
 
 function deleteKengaku_(id) {
   if (!confirm('この記録を削除しますか？この操作は元に戻せません。')) return;
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'delete_kengaku', key: ACCESS_KEY, id: id })
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.status === 'ok') {
-        cachedKengakuAll = data.list || [];
-        closeModal();
-        populateKengakuYmSelect();
-      } else {
-        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { alert('削除に失敗しました：' + err.message); });
+  return submitModal_(
+    { action: 'delete_kengaku', key: ACCESS_KEY, id: id },
+    '削除しています…', '削除に失敗しました',
+    function(data) { cachedKengakuAll = data.list || []; populateKengakuYmSelect(); }
+  );
 }
 
 // ============================================================
@@ -2802,41 +2777,21 @@ function saveKanriNeage_(id) {
   const content = document.getElementById('kn-modal-content').value.trim();
   if (!ym || !content) { alert('対象年月と内容を入力してください'); return; }
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'save_kanri_neage', key: ACCESS_KEY, id: id || '', ym: ym, content: content })
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.status === 'ok') {
-        cachedKanriNeageAll = data.list || [];
-        closeModal();
-        populateKanriNeageYmSelect();
-      } else {
-        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { alert('保存に失敗しました：' + err.message); });
+  return submitModal_(
+    { action: 'save_kanri_neage', key: ACCESS_KEY, id: id || '', ym: ym, content: content },
+    '保存しています…', '保存に失敗しました',
+    function(data) { cachedKanriNeageAll = data.list || []; populateKanriNeageYmSelect(); }
+  );
 }
 
 function deleteKanriNeage_(id) {
   if (!confirm('この記録を削除しますか？この操作は元に戻せません。')) return;
 
-  fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'delete_kanri_neage', key: ACCESS_KEY, id: id })
-  }).then(function(res) { return res.json(); })
-    .then(function(data) {
-      if (data.status === 'ok') {
-        cachedKanriNeageAll = data.list || [];
-        closeModal();
-        populateKanriNeageYmSelect();
-      } else {
-        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
-      }
-    })
-    .catch(function(err) { alert('削除に失敗しました：' + err.message); });
+  return submitModal_(
+    { action: 'delete_kanri_neage', key: ACCESS_KEY, id: id },
+    '削除しています…', '削除に失敗しました',
+    function(data) { cachedKanriNeageAll = data.list || []; populateKanriNeageYmSelect(); }
+  );
 }
 
 // ============================================================
