@@ -624,6 +624,7 @@
       <select id="shinki-result-select" onchange="renderShinkiAnken()">
         <option value="">すべて</option>
       </select>
+      <button class="btn btn-primary" style="margin-left:auto;" onclick="openShinkiModal_(null)">＋ 新規追加</button>
     </div>
     <div id="shinki-body"><div class="empty">データがありません</div></div>
   </div>
@@ -635,6 +636,7 @@
       <select id="juchu-ym-select" onchange="onJuchuMonthChange()">
         <option value="">選択してください（年度累計ランキングを表示）</option>
       </select>
+      <button class="btn btn-primary" style="margin-left:auto;" onclick="openJuchuModal_(null)">＋ 新規追加</button>
     </div>
 
     <div id="juchu-ranking-section" class="card" style="margin-bottom:16px;">
@@ -1834,7 +1836,10 @@ function renderShinkiAnken() {
           + '<div class="dept-card-name">' + esc(r.propertyName || '(物件名未登録)') + '</div>'
           + '<div class="dept-card-metric">' + esc(r.date) + '　' + esc(r.place || '') + '</div>'
         + '</div>'
-        + '<span class="rate-badge ' + rankCls + '">' + esc(r.rank || '-') + '</span>'
+        + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
+          + '<span class="rate-badge ' + rankCls + '">' + esc(r.rank || '-') + '</span>'
+          + '<span class="table-edit-btn" title="編集" onclick="openShinkiEditModal_(\'' + esc(r.id) + '\')">✎</span>'
+        + '</div>'
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">'
         + '<span class="cat-badge ' + resultCls + '">' + esc(r.result || '未設定') + '</span>'
@@ -1844,6 +1849,115 @@ function renderShinkiAnken() {
   });
   html += '</div>';
   body.innerHTML = html;
+}
+
+// ============================================================
+// 新規案件：ダッシュボードからの追加・編集・削除
+// ============================================================
+const SHINKI_RANK_OPTIONS = ['S', 'A', 'B', 'C'];
+const SHINKI_RESULT_OPTIONS = ['取得', 'これから対応', '交渉中', '取得出来ず', '対象外'];
+
+function openShinkiEditModal_(id) {
+  const item = cachedShinki.find(function(r) { return r.id === id; });
+  if (!item) { alert('データが見つかりませんでした。再読み込みしてください。'); return; }
+  openShinkiModal_(item);
+}
+
+function openShinkiModal_(existing) {
+  const isEdit = !!existing;
+  const v = function(key) { return (existing && existing[key]) ? existing[key] : ''; };
+  const id = isEdit ? existing.id : '';
+
+  // 選択肢に無い値（自由記述）が既に入っていても失われないよう、選択肢へ動的に加える
+  function selectHtml(elId, options, current) {
+    const opts = options.slice();
+    if (current && opts.indexOf(current) === -1) opts.push(current);
+    let h = '<select id="' + elId + '"><option value="">未設定</option>';
+    opts.forEach(function(o) {
+      h += '<option value="' + esc(o) + '"' + (o === current ? ' selected' : '') + '>' + esc(o) + '</option>';
+    });
+    return h + '</select>';
+  }
+
+  let html = '<h3>' + (isEdit ? '新規案件を編集' : '新規案件を追加') + '</h3>';
+  html += '<div class="modal-field"><label>発見日（必須）</label><input type="date" id="sk-modal-date" value="' + esc(v('date')) + '"></div>';
+  html += '<div class="modal-field"><label>物件名（必須）</label><input type="text" id="sk-modal-propertyName" value="' + esc(v('propertyName')) + '"></div>';
+  html += '<div class="modal-field"><label>ランク</label>' + selectHtml('sk-modal-rank', SHINKI_RANK_OPTIONS, v('rank')) + '</div>';
+  html += '<div class="modal-field"><label>結果</label>' + selectHtml('sk-modal-result', SHINKI_RESULT_OPTIONS, v('result')) + '</div>';
+  html += '<div class="modal-field"><label>情報提供者</label><input type="text" id="sk-modal-provider" value="' + esc(v('provider')) + '"></div>';
+  html += '<div class="modal-field"><label>情報源</label><input type="text" id="sk-modal-source" value="' + esc(v('source')) + '"></div>';
+  html += '<div class="modal-field"><label>場所</label><input type="text" id="sk-modal-place" value="' + esc(v('place')) + '"></div>';
+  html += '<div class="modal-field"><label>住所</label><input type="text" id="sk-modal-address" value="' + esc(v('address')) + '"></div>';
+  html += '<div class="modal-field"><label>現場状況</label><input type="text" id="sk-modal-siteStatus" value="' + esc(v('siteStatus')) + '"></div>';
+  html += '<div class="modal-field"><label>営業担当</label><input type="text" id="sk-modal-salesPerson" value="' + esc(v('salesPerson')) + '"></div>';
+  html += '<div class="modal-field"><label>先方担当者</label><input type="text" id="sk-modal-clientPerson" value="' + esc(v('clientPerson')) + '"></div>';
+  html += '<div class="modal-field"><label>初回確認日</label><input type="date" id="sk-modal-firstCheckDate" value="' + esc(v('firstCheckDate')) + '"></div>';
+  html += '<div class="modal-field"><label>オープン予定</label><input type="text" id="sk-modal-openDate" value="' + esc(v('openDate')) + '"></div>';
+  html += '<div class="modal-field"><label>進捗詳細</label><textarea id="sk-modal-progress">' + esc(v('progress')) + '</textarea></div>';
+  html += '<div class="modal-actions">';
+  if (isEdit) html += '<button class="btn btn-danger" onclick="deleteShinki_(\'' + esc(id) + '\')">削除</button>';
+  html += '<button class="btn" onclick="closeModal()">キャンセル</button>';
+  html += '<button class="btn btn-primary" onclick="saveShinki_(\'' + esc(id) + '\')">保存</button>';
+  html += '</div>';
+  openModal_(html);
+}
+
+// 保存・削除の後に一覧を作り直す。施設見学と違い populateShinkiYmSelect() は
+// 再描画まで連鎖しないため、3つとも明示的に呼ぶ必要がある。
+function refreshShinkiAfterEdit_(list) {
+  cachedShinki = list || [];
+  populateShinkiYmSelect();
+  populateShinkiResultSelect();
+  renderShinkiAnken();
+}
+
+function saveShinki_(id) {
+  const val = function(key) { return document.getElementById('sk-modal-' + key).value.trim(); };
+  const date = val('date');
+  const propertyName = val('propertyName');
+  if (!date || !propertyName) { alert('発見日と物件名を入力してください'); return; }
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'save_shinki', key: ACCESS_KEY, id: id || '',
+      date: date, propertyName: propertyName,
+      rank: val('rank'), result: val('result'), provider: val('provider'),
+      source: val('source'), place: val('place'), address: val('address'),
+      siteStatus: val('siteStatus'), salesPerson: val('salesPerson'),
+      clientPerson: val('clientPerson'), firstCheckDate: val('firstCheckDate'),
+      openDate: val('openDate'), progress: val('progress')
+    })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        closeModal();
+        refreshShinkiAfterEdit_(data.list);
+      } else {
+        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { alert('保存に失敗しました：' + err.message); });
+}
+
+function deleteShinki_(id) {
+  if (!confirm('この案件を削除しますか？この操作は元に戻せません。')) return;
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'delete_shinki', key: ACCESS_KEY, id: id })
+  }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.status === 'ok') {
+        closeModal();
+        refreshShinkiAfterEdit_(data.list);
+      } else {
+        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { alert('削除に失敗しました：' + err.message); });
 }
 
 // ============================================================
@@ -1862,16 +1976,30 @@ async function openJuchuTab(el) {
 
   document.getElementById('juchu-ranking-body').innerHTML = '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
   try {
-    const url = withKey(GAS_URL + '?type=juchu_ranking');
-    const data = await fetchJSONP(url);
-    cachedJuchuRanking = (data && data.ranking) ? data.ranking : [];
-    juchuRankingLoaded = true;
+    await fetchJuchuRanking_();
     populateJuchuYmSelect();
     renderJuchuRanking();
   } catch (err) {
     document.getElementById('juchu-ranking-body').innerHTML =
       '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
   }
+}
+
+async function fetchJuchuRanking_() {
+  const url = withKey(GAS_URL + '?type=juchu_ranking');
+  const data = await fetchJSONP(url);
+  cachedJuchuRanking = (data && data.ranking) ? data.ranking : [];
+  juchuRankingLoaded = true;
+}
+
+// 追加・編集・削除の直後に呼ぶ：ランキングと月次データをどちらも取り直して再描画する
+// （金額変更はランキング側の集計にも影響するため、常に両方リフレッシュする）
+async function refreshJuchuAfterEdit_() {
+  cachedJuchuMonthlyByYm = {};
+  try { await fetchJuchuRanking_(); } catch (e) {}
+  renderJuchuRanking();
+  const ym = document.getElementById('juchu-ym-select').value;
+  if (ym) await onJuchuMonthChange();
 }
 
 function populateJuchuYmSelect() {
@@ -2027,9 +2155,10 @@ function renderJuchuMonthly(data) {
   if (large.length) {
     html += '<div class="card" style="margin-bottom:16px;"><h2>大型案件情報</h2><div style="display:flex;flex-direction:column;gap:8px;">';
     large.forEach(function(r) {
-      html += '<div style="padding:10px 12px;background:var(--bg);border-radius:8px;">'
+      html += '<div style="position:relative;padding:10px 40px 10px 12px;background:var(--bg);border-radius:8px;">'
         + '<div style="font-weight:600;">' + esc(r.name) + '</div>'
         + '<div style="color:var(--muted);font-size:13px;margin-top:2px;">' + esc(r.content) + '</div>'
+        + '<span class="table-edit-btn" style="position:absolute;top:8px;right:8px;" title="編集" onclick="openJuchuEditModal_(\'' + esc(r.id) + '\')">✎</span>'
         + '</div>';
     });
     html += '</div></div>';
@@ -2045,7 +2174,7 @@ function renderJuchuMonthly(data) {
       + '<thead><tr>'
       + '<th>物件名</th><th>品目</th>'
       + '<th>対応日</th><th class="num">金額</th>'
-      + '<th>担当者</th></tr></thead><tbody>';
+      + '<th>担当者</th><th></th></tr></thead><tbody>';
     juchu.forEach(function(r) {
       html += '<tr>'
         + '<td>' + esc(r.name) + '</td>'
@@ -2053,12 +2182,105 @@ function renderJuchuMonthly(data) {
         + '<td>' + esc(r.date) + '</td>'
         + '<td class="num">' + fmtNum(r.amount) + '円</td>'
         + '<td>' + esc(r.person) + '</td>'
+        + '<td><span class="table-edit-btn" title="編集" onclick="openJuchuEditModal_(\'' + esc(r.id) + '\')">✎</span></td>'
         + '</tr>';
     });
     html += '</tbody></table></div></div>';
   }
 
   body.innerHTML = html;
+}
+
+// ============================================================
+// 受注案件：ダッシュボードからの追加・編集・削除
+// ============================================================
+function openJuchuEditModal_(id) {
+  const ym = document.getElementById('juchu-ym-select').value;
+  const data = cachedJuchuMonthlyByYm[ym];
+  const item = data && [...(data.juchu || []), ...(data.large || [])].find(function(r) { return r.id === id; });
+  if (!item) { alert('データが見つかりませんでした。再読み込みしてください。'); return; }
+  openJuchuModal_(item);
+}
+
+function openJuchuModal_(existing) {
+  const isEdit = !!existing;
+  const kind = existing ? existing.kind : '受注案件';
+  const ym = existing ? existing.ym : (document.getElementById('juchu-ym-select').value || document.getElementById('ym-select').value || '');
+  const name = existing ? existing.name : '';
+  const item = existing ? existing.item : '';
+  const date = existing ? existing.date : '';
+  const amount = existing ? existing.amount : '';
+  const person = existing ? existing.person : '';
+  const content = existing ? existing.content : '';
+  const id = existing ? existing.id : '';
+
+  let html = '<h3>' + (isEdit ? '受注案件を編集' : '受注案件を新規追加') + '</h3>';
+  html += '<div class="modal-field"><label>区分</label><select id="jc-modal-kind">'
+    + '<option value="受注案件"' + (kind === '受注案件' ? ' selected' : '') + '>受注案件</option>'
+    + '<option value="大型案件"' + (kind === '大型案件' ? ' selected' : '') + '>大型案件</option>'
+    + '</select></div>';
+  html += '<div class="modal-field"><label>対象月</label><input type="month" id="jc-modal-ym" value="' + esc(ym) + '"></div>';
+  html += '<div class="modal-field"><label>物件名</label><input type="text" id="jc-modal-name" value="' + esc(name) + '"></div>';
+  html += '<div class="modal-field"><label>品目</label><input type="text" id="jc-modal-item" value="' + esc(item) + '"></div>';
+  html += '<div class="modal-field"><label>対応日</label><input type="text" id="jc-modal-date" value="' + esc(date) + '" placeholder="例: 2026-07-15"></div>';
+  html += '<div class="modal-field"><label>金額（受注案件のみ・ランキングに集計されます）</label><input type="number" id="jc-modal-amount" value="' + esc(amount) + '"></div>';
+  html += '<div class="modal-field"><label>担当者（受注案件のみ）</label><input type="text" id="jc-modal-person" value="' + esc(person) + '"></div>';
+  html += '<div class="modal-field"><label>内容（大型案件のみ・自由記述）</label><textarea id="jc-modal-content">' + esc(content) + '</textarea></div>';
+  html += '<div class="modal-actions">';
+  if (isEdit) html += '<button class="btn btn-danger" onclick="deleteJuchu_(\'' + esc(id) + '\')">削除</button>';
+  html += '<button class="btn" onclick="closeModal()">キャンセル</button>';
+  html += '<button class="btn btn-primary" onclick="saveJuchu_(\'' + esc(id) + '\')">保存</button>';
+  html += '</div>';
+  openModal_(html);
+}
+
+function saveJuchu_(id) {
+  const kind = document.getElementById('jc-modal-kind').value;
+  const ym = document.getElementById('jc-modal-ym').value;
+  const name = document.getElementById('jc-modal-name').value.trim();
+  const item = document.getElementById('jc-modal-item').value.trim();
+  const date = document.getElementById('jc-modal-date').value.trim();
+  const amount = document.getElementById('jc-modal-amount').value;
+  const person = document.getElementById('jc-modal-person').value.trim();
+  const content = document.getElementById('jc-modal-content').value.trim();
+  if (!kind || !ym || !name) { alert('区分・対象月・物件名を入力してください'); return; }
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'save_juchu', key: ACCESS_KEY, id: id || '',
+      kind: kind, ym: ym, name: name, item: item, date: date, amount: amount, person: person, content: content
+    })
+  }).then(function(res) { return res.json(); })
+    .then(async function(data) {
+      if (data.status === 'ok') {
+        closeModal();
+        await refreshJuchuAfterEdit_();
+      } else {
+        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { alert('保存に失敗しました：' + err.message); });
+}
+
+function deleteJuchu_(id) {
+  if (!confirm('この記録を削除しますか？この操作は元に戻せません。')) return;
+
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'delete_juchu', key: ACCESS_KEY, id: id })
+  }).then(function(res) { return res.json(); })
+    .then(async function(data) {
+      if (data.status === 'ok') {
+        closeModal();
+        await refreshJuchuAfterEdit_();
+      } else {
+        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { alert('削除に失敗しました：' + err.message); });
 }
 
 // ============================================================
