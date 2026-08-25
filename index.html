@@ -271,7 +271,7 @@
   .hr-list { display: flex; flex-direction: column; gap: 8px; }
   .hr-item {
     display: grid;
-    grid-template-columns: 105px 165px 1fr 90px 85px;
+    grid-template-columns: 105px 165px 1fr 90px 85px 40px;
     gap: 0; align-items: stretch;
     border-radius: 8px;
     border: 1px solid var(--border);
@@ -279,13 +279,15 @@
     background: var(--bg-subtle); overflow: hidden;
   }
   /* 部署（ユニット）列がある部署だけ、列を1つ追加したレイアウトにする */
-  .hr-item.with-unit, .hr-list-head.with-unit { grid-template-columns: 100px 105px 155px 1fr 90px 85px; }
+  .hr-item.with-unit, .hr-list-head.with-unit { grid-template-columns: 100px 105px 155px 1fr 90px 85px 40px; }
   .hr-item.cat-good   { border-left-color: var(--success); }
   .hr-item.cat-bad    { border-left-color: var(--warning); }
   .hr-item.cat-safety { border-left-color: var(--danger); }
   .hr-item.cat-enter  { border-left-color: #6B5B95; }
   .hr-field { padding: 10px 12px; border-right: 1px solid var(--border); }
   .hr-field:last-child { border-right: none; }
+  /* 行の編集ボタンを置く最終列（幅が狭いため余白を詰める） */
+  .hr-field.hr-edit-cell { padding: 8px 4px; display: flex; align-items: flex-start; justify-content: center; }
   .hr-field-label { display: none; }
   @media (max-width: 640px) {
     .hr-field-label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
@@ -305,7 +307,7 @@
   .hr-field-value.hr-status-対応中 { color: var(--warning-text); font-weight: 600; }
   .hr-field-value.hr-status-未対応 { color: var(--danger-text); font-weight: 600; }
   .hr-list-head {
-    display: grid; grid-template-columns: 105px 165px 1fr 90px 85px;
+    display: grid; grid-template-columns: 105px 165px 1fr 90px 85px 40px;
     padding: 0 0 6px; margin-bottom: 6px;
     border-bottom: 1px solid var(--border);
   }
@@ -566,7 +568,7 @@
   <!-- 人事コメントタブ -->
   <div id="tab-hr" class="tab-content">
     <div class="card">
-      <h2>今月の人事コメント（全部署）</h2>
+      <h2>今月の人事コメント（全部署）<button class="btn btn-primary" style="float:right;font-size:12px;padding:4px 12px;" onclick="openHrModal_(null)">＋ 新規追加</button></h2>
       <div id="hr-body"><div class="empty">データがありません</div></div>
     </div>
   </div>
@@ -1316,7 +1318,7 @@ function renderHr() {
       + '<div style="font-weight:600;color:var(--primary);margin-bottom:8px;font-size:14px">◾ ' + esc(dept) + '</div>'
       + '<div class="hr-list-head' + gridCls + '">'
         + (hasUnit ? '<span>部署</span>' : '')
-        + '<span>対象者</span><span>カテゴリ</span><span>内容</span><span>対応状況</span><span>写真/リンク</span>'
+        + '<span>対象者</span><span>カテゴリ</span><span>内容</span><span>対応状況</span><span>写真/リンク</span><span></span>'
       + '</div>'
       + '<div class="hr-list">';
     items.forEach(item => {
@@ -1360,6 +1362,7 @@ function renderHr() {
         + '<div class="hr-field"><span class="hr-field-label">内容</span><span class="hr-field-value">' + renderHrContent_(item) + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">対応状況</span><span class="hr-field-value ' + statusCls + '">' + (item.status ? esc(item.status) : '-') + '</span></div>'
         + '<div class="hr-field"><span class="hr-field-label">写真/リンク</span><span class="hr-field-value">' + photosHtml + '</span></div>'
+        + '<div class="hr-field hr-edit-cell"><span class="table-edit-btn" title="編集" onclick="openHrEditModal_(\x27' + esc(item.id) + '\x27)">✎</span></div>'
         + '</div>';
     });
     html += '</div></div>';
@@ -1469,9 +1472,8 @@ function uploadHrPhoto_(idx, file) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
         key: ACCESS_KEY,
-        dept: item.dept, ym: item.ym, unit: item.unit || '',
-        category: item.category || '', targetPerson: item.targetPerson || '',
-        content: item.content || '', status: item.status || '',
+        dept: item.dept, id: item.id,
+        targetPerson: item.targetPerson || '',
         imageBase64: base64, mimeType: 'image/jpeg'
       })
     });
@@ -1541,9 +1543,7 @@ function deleteHrPhoto_(idx, slot) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({
       action: 'delete_photo', key: ACCESS_KEY,
-      dept: item.dept, ym: item.ym, unit: item.unit || '',
-      category: item.category || '', targetPerson: item.targetPerson || '',
-      content: item.content || '', status: item.status || '',
+      dept: item.dept, id: item.id,
       photoUrl: url
     })
   }).then(function(res) { return res.json(); })
@@ -1559,6 +1559,157 @@ function deleteHrPhoto_(idx, slot) {
       renderHr();
       alert('削除に失敗しました：' + err.message);
     });
+}
+
+// ============================================================
+// 人事コメント：ダッシュボードからの追加・編集・削除
+// ============================================================
+// 部署ごとのユニット設定・プルダウン選択肢はGAS側が持っているため、
+// 人事のモーダルを初めて開いたときに一度だけ取得してキャッシュする。
+let cachedHrConfig = null;
+
+async function ensureHrConfig_() {
+  if (cachedHrConfig) return cachedHrConfig;
+  try {
+    cachedHrConfig = await fetchJSONP(withKey(GAS_URL + '?type=hr_config'));
+  } catch (err) {
+    cachedHrConfig = { depts: {}, categoryOptions: [], statusOptions: [] };
+  }
+  return cachedHrConfig;
+}
+
+async function openHrEditModal_(id) {
+  const item = cachedHr.find(function(r) { return r.id === id; });
+  if (!item) { alert('データが見つかりませんでした。再読み込みしてください。'); return; }
+  await openHrModal_(item);
+}
+
+async function openHrModal_(existing) {
+  const cfg = await ensureHrConfig_();
+  const isEdit = !!existing;
+  const v = function(key) { return (existing && existing[key]) ? existing[key] : ''; };
+  const id = isEdit ? existing.id : '';
+  const depts = Object.keys(cfg.depts || {});
+  const curDept = isEdit ? existing.dept : (depts[0] || '');
+  const ym = isEdit ? existing.ym : (document.getElementById('ym-select').value || '');
+
+  function optionsHtml(list, current) {
+    const opts = (list || []).slice();
+    if (current && opts.indexOf(current) === -1) opts.push(current);
+    return opts.map(function(o) {
+      return '<option value="' + esc(o) + '"' + (o === current ? ' selected' : '') + '>' + esc(o) + '</option>';
+    }).join('');
+  }
+
+  let html = '<h3>' + (isEdit ? '人事コメントを編集' : '人事コメントを追加') + '</h3>';
+  // 部署を変えると書き込み先のシートが変わってしまうため、編集時は部署を固定する
+  html += '<div class="modal-field"><label>部署</label><select id="hr-modal-dept" onchange="onHrModalDeptChange_()"'
+    + (isEdit ? ' disabled' : '') + '>' + optionsHtml(depts, curDept) + '</select></div>';
+  html += '<div class="modal-field"><label>対象年月</label><input type="month" id="hr-modal-ym" value="' + esc(ym) + '"></div>';
+  html += '<div class="modal-field" id="hr-modal-unit-field" style="display:none;"><label>部署（ユニット）</label>'
+    + '<select id="hr-modal-unit"></select></div>';
+  // カテゴリはシート側も自由記述を許しているため、プルダウン付きの自由入力にする
+  html += '<div class="modal-field"><label>カテゴリ</label>'
+    + '<input type="text" id="hr-modal-category" list="hr-modal-category-list" value="' + esc(v('category')) + '">'
+    + '<datalist id="hr-modal-category-list">'
+    + (cfg.categoryOptions || []).map(function(o) { return '<option value="' + esc(o) + '"></option>'; }).join('')
+    + '</datalist></div>';
+  html += '<div class="modal-field"><label>対象者</label><input type="text" id="hr-modal-targetPerson" value="' + esc(v('targetPerson')) + '"></div>';
+  html += '<div class="modal-field"><label>内容（必須）</label><textarea id="hr-modal-content">' + esc(v('content')) + '</textarea></div>';
+  html += '<div class="modal-field"><label>対応状況</label><select id="hr-modal-status">'
+    + '<option value="">未設定</option>' + optionsHtml(cfg.statusOptions, v('status')) + '</select></div>';
+  html += '<div class="modal-actions">';
+  if (isEdit) html += '<button class="btn btn-danger" onclick="deleteHr_(\'' + esc(id) + '\')">削除</button>';
+  html += '<button class="btn" onclick="closeModal()">キャンセル</button>';
+  html += '<button class="btn btn-primary" onclick="saveHr_(\'' + esc(id) + '\')">保存</button>';
+  html += '</div>';
+  openModal_(html);
+
+  onHrModalDeptChange_(v('unit'));
+}
+
+// 選択中の部署に「部署（ユニット）」欄があるかどうかで、その入力欄の表示を切り替える
+function onHrModalDeptChange_(presetUnit) {
+  const cfg = cachedHrConfig || { depts: {} };
+  const dept = document.getElementById('hr-modal-dept').value;
+  const info = (cfg.depts || {})[dept] || { unitMode: false, unitOptions: [] };
+  const field = document.getElementById('hr-modal-unit-field');
+  const sel = document.getElementById('hr-modal-unit');
+  if (!field || !sel) return;
+
+  if (!info.unitMode) { field.style.display = 'none'; sel.innerHTML = ''; return; }
+
+  const current = (typeof presetUnit === 'string') ? presetUnit : '';
+  const opts = (info.unitOptions || []).slice();
+  if (current && opts.indexOf(current) === -1) opts.push(current);
+  sel.innerHTML = '<option value="">未設定</option>' + opts.map(function(o) {
+    return '<option value="' + esc(o) + '"' + (o === current ? ' selected' : '') + '>' + esc(o) + '</option>';
+  }).join('');
+  field.style.display = '';
+}
+
+// 保存・削除の後は、人事データが月次の一括取得に含まれるため、
+// その月のキャッシュを捨てたうえで取り直す
+async function refreshHrAfterEdit_() {
+  const ym = document.getElementById('ym-select').value;
+  if (ym && cachedAllFlatByYm[ym]) delete cachedAllFlatByYm[ym];
+  await loadAll();
+}
+
+function saveHr_(id) {
+  const dept = document.getElementById('hr-modal-dept').value;
+  const ym = document.getElementById('hr-modal-ym').value;
+  const unitEl = document.getElementById('hr-modal-unit');
+  const unitShown = document.getElementById('hr-modal-unit-field').style.display !== 'none';
+  const unit = (unitEl && unitShown) ? unitEl.value : '';
+  const category = document.getElementById('hr-modal-category').value.trim();
+  const targetPerson = document.getElementById('hr-modal-targetPerson').value.trim();
+  const content = document.getElementById('hr-modal-content').value.trim();
+  const status = document.getElementById('hr-modal-status').value;
+  if (!dept || !ym || !content) { alert('部署・対象年月・内容を入力してください'); return; }
+
+  setStatus('保存中...', true);
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'save_hr', key: ACCESS_KEY, id: id || '',
+      dept: dept, ym: ym, unit: unit, category: category,
+      targetPerson: targetPerson, content: content, status: status
+    })
+  }).then(function(res) { return res.json(); })
+    .then(async function(data) {
+      setStatus('', false);
+      if (data.status === 'ok') {
+        closeModal();
+        await refreshHrAfterEdit_();
+      } else {
+        alert('保存に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { setStatus('', false); alert('保存に失敗しました：' + err.message); });
+}
+
+function deleteHr_(id) {
+  const dept = document.getElementById('hr-modal-dept').value;
+  if (!confirm('この人事コメントを削除しますか？\n添付した写真もあわせて削除されます。この操作は元に戻せません。')) return;
+
+  setStatus('削除中...', true);
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'delete_hr', key: ACCESS_KEY, dept: dept, id: id })
+  }).then(function(res) { return res.json(); })
+    .then(async function(data) {
+      setStatus('', false);
+      if (data.status === 'ok') {
+        closeModal();
+        await refreshHrAfterEdit_();
+      } else {
+        alert('削除に失敗しました：' + (data.message || '不明なエラー'));
+      }
+    })
+    .catch(function(err) { setStatus('', false); alert('削除に失敗しました：' + err.message); });
 }
 
 // ============================================================
