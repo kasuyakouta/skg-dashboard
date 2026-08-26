@@ -955,6 +955,9 @@ function showTab(id, el) {
     const body = document.getElementById('hr-body');
     if (body) fitHrText_(body);
   }
+  // AIレポートの画像も同じ理由で、非表示中は位置が取れず高さの上限を決められない。
+  // 表示に切り替わったここで計算する。
+  if (id === 'tab-report') adjustInfographicImageHeight();
 }
 
 // ============================================================
@@ -1136,6 +1139,9 @@ async function loadAll(nocache) {
     const infographicData = await infographicPromise;
     cachedInfographic = (infographicData && (infographicData.imageFileId || infographicData.reportText))
       ? infographicData : null;
+    // renderInfographicReport が作る<img>は遅延読み込みにしていないため、
+    // ここで描画した時点（初期表示の直後）から画像のダウンロードが始まる。
+    // タブを開く前に読み終わるので、開いた瞬間に表示できる。
     renderInfographicReport();
   })();
 
@@ -1831,7 +1837,10 @@ function renderInfographicReport() {
   // 画像：登録済みなら画像に重ねて「画像を変更」ボタン、未登録なら追加用ドロップゾーンを表示する
   if (thumbUrl) {
     html += '<div class="infographic-image-wrap" style="' + (isPreviewing ? 'opacity:0.6;' : '') + '">'
-      + '<img id="infographic-img" src="' + esc(thumbUrl) + '" class="infographic-thumb" onclick="openLightbox(\'' + esc(fullUrl) + '\')" loading="lazy">'
+      // loading="lazy" は付けない。AIレポートのタブは初期状態では非表示のため、
+      // 遅延読み込みにするとタブを開くまでダウンロードが始まらず、
+      // 開いた瞬間に大きな画像を待たされることになる（先読みの目的と相反する）。
+      + '<img id="infographic-img" src="' + esc(thumbUrl) + '" class="infographic-thumb" onclick="openLightbox(\'' + esc(fullUrl) + '\')">'
       + (isPreviewing
         ? '<span class="infographic-change-img"><span class="spinner-sm" style="width:12px;height:12px;margin:0;"></span>&nbsp;保存中...</span>'
         : ('<label class="infographic-change-img" title="画像を変更（クリックまたはドラッグ&ドロップ）"'
@@ -1970,11 +1979,14 @@ function adjustInfographicImageHeight() {
     img.style.maxHeight = Math.max(available, 200) + 'px'; // 極端に小さくなりすぎないよう下限を設ける
   }
 
-  if (img.complete) {
-    apply();
-  } else {
-    img.addEventListener('load', apply, { once: true });
-  }
+  // 読み込みの完了を待つだけでは、画像が先読み済み（キャッシュ済み）で
+  // すぐ表示された場合に load を取りこぼすことがある。
+  // その場でも一度当てておき、読み込み完了時にも当て直す。
+  // なお、タブが非表示の間は位置が取れないため、表示に切り替わったタイミングでも
+  // showTab から呼び直している。
+  apply();
+  img.addEventListener('load', apply, { once: true });
+
   window.removeEventListener('resize', window._infographicResizeHandler || function(){});
   window._infographicResizeHandler = apply;
   window.addEventListener('resize', apply);
