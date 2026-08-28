@@ -384,6 +384,30 @@
   @media (max-width: 768px) { .chart-canvas-wrap { height: 240px; } }
   @media (min-width: 1800px) { .chart-canvas-wrap { height: 360px; } }
 
+  /* 自前のグラフ凡例。標準の凡例は折り返し位置が揃わないため、
+     4列のグリッドに固定して色の目印を縦に揃える（10件なら4・4・2の3行になる） */
+  .chart-legend {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px 14px;
+    margin-top: 14px;
+  }
+  @media (max-width: 1100px) { .chart-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 640px)  { .chart-legend { grid-template-columns: 1fr; } }
+  .chart-legend-item {
+    display: flex; align-items: center; gap: 6px;
+    min-width: 0;                      /* 名前の「…」省略を効かせるために必要 */
+    padding: 3px 4px; border: none; border-radius: 4px;
+    background: none; font-family: inherit; font-size: 11px; color: var(--text);
+    text-align: left; cursor: pointer;
+  }
+  .chart-legend-item:hover { background: var(--bg-subtle); }
+  .chart-legend-chip { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+  .chart-legend-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* クリックで非表示にした系列 */
+  .chart-legend-item.is-off { opacity: 0.4; }
+  .chart-legend-item.is-off .chart-legend-label { text-decoration: line-through; }
+
   /* エラー表示 */
   .error-box {
     background: var(--danger-bg); border: 1px solid var(--danger); border-radius: 8px;
@@ -745,6 +769,7 @@
       <h2>月別の推移<span id="danboru-chart-note" style="float:right;font-size:12px;color:var(--muted);font-weight:400;"></span></h2>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;" id="danboru-band-tabs"></div>
       <div class="chart-canvas-wrap"><canvas id="danboru-chart"></canvas></div>
+      <div class="chart-legend" id="danboru-legend"></div>
     </div>
 
     <div id="danboru-body"><div class="empty">タブを開くと、段ボール排出量のランキングが表示されます</div></div>
@@ -2054,7 +2079,8 @@ function renderDanboruChart_() {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'nearest', intersect: false },
       plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+        // 標準の凡例は折り返し位置が揃わないため使わず、下に自前の凡例を並べる
+        legend: { display: false },
         tooltip: {
           callbacks: {
             label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + ' t'; }
@@ -2066,7 +2092,31 @@ function renderDanboruChart_() {
       }
     }
   });
+
+  renderDanboruLegend_();
 }
+
+// グラフの凡例を4列のグリッドで描く。クリックでその系列の表示/非表示を切り替える
+function renderDanboruLegend_() {
+  const el = document.getElementById('danboru-legend');
+  if (!el || !danboruChart) return;
+  el.innerHTML = danboruChart.data.datasets.map(function(ds, i) {
+    const off = danboruChart.isDatasetVisible(i) ? '' : ' is-off';
+    return '<button type="button" class="chart-legend-item' + off + '"'
+      + ' onclick="toggleDanboruSeries_(' + i + ')" title="' + esc(ds.label) + '">'
+      + '<span class="chart-legend-chip" style="background:' + esc(ds.borderColor) + ';"></span>'
+      + '<span class="chart-legend-label">' + esc(ds.label) + '</span>'
+      + '</button>';
+  }).join('');
+}
+
+function toggleDanboruSeries_(i) {
+  if (!danboruChart) return;
+  danboruChart.setDatasetVisibility(i, !danboruChart.isDatasetVisible(i));
+  danboruChart.update();
+  renderDanboruLegend_();
+}
+
 // ============================================================
 // AIレポート描画
 // ============================================================
