@@ -525,6 +525,16 @@
   }
   .table-edit-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
 
+  /* 一覧表の中でクリックして詳細を開けるセル */
+  .table-link { color: var(--accent); cursor: pointer; font-weight: 600; }
+  .table-link:hover { text-decoration: underline; }
+
+  /* 詳細モーダルの項目（ラベル＋値の2列） */
+  .detail-grid { display: grid; grid-template-columns: 92px 1fr; gap: 8px 12px; font-size: 13px; }
+  .detail-grid dt { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .detail-grid dd { margin: 0; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+  .detail-grid dd.is-empty { color: var(--muted2); }
+
   /* 追加・編集で共通利用するモーダル */
   .modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -2374,28 +2384,35 @@ function renderShinkiAnken() {
     return;
   }
 
-  let html = '<div class="dept-card-grid">';
-  filtered.forEach(function(r) {
+  // 発見日の新しいものが上に来るよう並べ替え
+  const sorted = [...filtered].sort(function(a, b) {
+    if (a.date === b.date) return 0;
+    return a.date < b.date ? 1 : -1;
+  });
+
+  let html = '<div class="card"><h2>新設新規一覧（' + sorted.length + '件）</h2>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">物件名をクリックすると、詳細が表示されます</div>'
+    + '<div class="table-scroll"><table class="data-table">'
+    + '<thead><tr>'
+    + '<th>発見日</th><th>物件名</th><th>ランク</th>'
+    + '<th>場所</th><th>営業担当</th><th>結果</th><th></th></tr></thead><tbody>';
+
+  sorted.forEach(function(r) {
     const rankCls = SHINKI_RANK_CLASS[r.rank] || 'rate-na';
     const resultCls = SHINKI_RESULT_CLASS[r.result] || 'cat-normal';
-    html += '<div class="dept-card">'
-      + '<div class="dept-card-head">'
-        + '<div>'
-          + '<div class="dept-card-name">' + esc(r.propertyName || '(物件名未登録)') + '</div>'
-          + '<div class="dept-card-metric">' + esc(r.date) + '　' + esc(r.place || '') + '</div>'
-        + '</div>'
-        + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'
-          + '<span class="rate-badge ' + rankCls + '">' + esc(r.rank || '-') + '</span>'
-          + '<span class="table-edit-btn" title="編集" onclick="openShinkiEditModal_(\'' + esc(r.id) + '\')">✎</span>'
-        + '</div>'
-      + '</div>'
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">'
-        + '<span class="cat-badge ' + resultCls + '">' + esc(r.result || '未設定') + '</span>'
-        + (r.salesPerson ? '<span class="cat-badge cat-normal">営業: ' + esc(r.salesPerson) + '</span>' : '')
-      + '</div>'
-    + '</div>';
+    html += '<tr>'
+      + '<td style="white-space:nowrap;">' + esc(r.date) + '</td>'
+      + '<td><span class="table-link" onclick="openShinkiDetailModal_(\'' + esc(r.id) + '\')">'
+        + esc(r.propertyName || '(物件名未登録)') + '</span></td>'
+      + '<td><span class="rate-badge ' + rankCls + '">' + esc(r.rank || '-') + '</span></td>'
+      + '<td>' + esc(r.place || '') + '</td>'
+      + '<td style="white-space:nowrap;">' + esc(r.salesPerson || '') + '</td>'
+      + '<td><span class="cat-badge ' + resultCls + '">' + esc(r.result || '未設定') + '</span></td>'
+      + '<td><span class="table-edit-btn" title="編集" onclick="openShinkiEditModal_(\'' + esc(r.id) + '\')">✎</span></td>'
+      + '</tr>';
   });
-  html += '</div>';
+
+  html += '</tbody></table></div></div>';
   body.innerHTML = html;
 }
 
@@ -2404,6 +2421,35 @@ function renderShinkiAnken() {
 // ============================================================
 const SHINKI_RANK_OPTIONS = ['S', 'A', 'B', 'C'];
 const SHINKI_RESULT_OPTIONS = ['取得', 'これから対応', '交渉中', '取得出来ず', '対象外'];
+
+// 物件名をクリックしたときに出す詳細表示。ここから編集モーダルへ進める
+function openShinkiDetailModal_(id) {
+  const r = cachedShinki.find(function(x) { return x.id === id; });
+  if (!r) { alert('データが見つかりませんでした。再読み込みしてください。'); return; }
+
+  const DETAIL_FIELDS = [
+    ['発見日', 'date'], ['ランク', 'rank'], ['結果', 'result'],
+    ['情報提供者', 'provider'], ['情報源', 'source'],
+    ['場所', 'place'], ['住所', 'address'], ['現場状況', 'siteStatus'],
+    ['営業担当', 'salesPerson'], ['先方担当者', 'clientPerson'],
+    ['初回確認日', 'firstCheckDate'], ['オープン予定', 'openDate'],
+    ['進捗詳細', 'progress']
+  ];
+
+  let html = '<h3>' + esc(r.propertyName || '(物件名未登録)') + '</h3>';
+  html += '<dl class="detail-grid">';
+  DETAIL_FIELDS.forEach(function(f) {
+    const val = r[f[1]];
+    html += '<dt>' + esc(f[0]) + '</dt>'
+      + '<dd' + (val ? '' : ' class="is-empty"') + '>' + esc(val || '—') + '</dd>';
+  });
+  html += '</dl>';
+  html += '<div class="modal-actions">'
+    + '<button class="btn" onclick="closeModal()">閉じる</button>'
+    + '<button class="btn btn-primary" onclick="openShinkiEditModal_(\'' + esc(r.id) + '\')">編集</button>'
+    + '</div>';
+  openModal_(html);
+}
 
 function openShinkiEditModal_(id) {
   const item = cachedShinki.find(function(r) { return r.id === id; });
