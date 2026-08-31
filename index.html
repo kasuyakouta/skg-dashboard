@@ -601,6 +601,7 @@
       <div class="tab" onclick="openUkakezanTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14.5" r="1.6"/></svg>売掛残物件</div>
       <div class="tab" onclick="openFuelTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="10" height="17" rx="1"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 8h3l3 3v6a1.5 1.5 0 0 1-3 0v-2a1 1 0 0 0-1-1h-2"/></svg>燃料</div>
       <div class="tab" onclick="openDanboruTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v8l9 4 9-4V8"/><line x1="12" y1="12" x2="12" y2="20"/></svg>段ボールトップ50</div>
+      <div class="tab" onclick="openSanpaiTab(this)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg>産廃売上トップ50</div>
     </div>
     <div class="tab-divider"></div>
     <div class="tab-group">
@@ -789,6 +790,36 @@
     </div>
 
     <div id="danboru-body"><div class="empty">タブを開くと、段ボール排出量のランキングが表示されます</div></div>
+  </div>
+
+  <!-- 産廃売上トップ50タブ -->
+  <div id="tab-sanpai" class="tab-content">
+    <div class="controls" style="background:none;border:none;padding:0;margin-bottom:14px;gap:12px;">
+      <label>集計単位</label>
+      <select id="sanpai-unit-select" onchange="onSanpaiConditionChange()">
+        <option value="site">現場別</option>
+        <option value="customer">得意先別</option>
+      </select>
+      <label style="margin-left:8px;">集計期間</label>
+      <select id="sanpai-period-select" onchange="onSanpaiConditionChange()">
+        <option value="fy">年度累計</option>
+        <option value="12m">直近12ヶ月</option>
+        <option value="all">全期間</option>
+        <option value="month">単月</option>
+      </select>
+      <select id="sanpai-month-select" style="display:none;" onchange="onSanpaiConditionChange()"></select>
+    </div>
+
+    <div id="sanpai-kpi" class="kpi-row"></div>
+
+    <div class="card">
+      <h2>月別の推移<span id="sanpai-chart-note" style="float:right;font-size:12px;color:var(--muted);font-weight:400;"></span></h2>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;" id="sanpai-band-tabs"></div>
+      <div class="chart-canvas-wrap"><canvas id="sanpai-chart"></canvas></div>
+      <div class="chart-legend" id="sanpai-legend"></div>
+    </div>
+
+    <div id="sanpai-body"><div class="empty">タブを開くと、産廃売上のランキングが表示されます</div></div>
   </div>
 
   <!-- AIレポートタブ -->
@@ -2123,6 +2154,243 @@ function toggleDanboruSeries_(i) {
 }
 
 // ============================================================
+// 産廃売上トップ50
+//   段ボールトップ50と同じ作りだが、単位が円（画面では千円）である点と、
+//   現場名だけでは会社が分からないため凡例に得意先名も添える点が異なる。
+// ============================================================
+let cachedSanpai = null;          // 直近に取得した集計結果
+let sanpaiBand = 0;               // 表示中の順位帯（0=1〜10位, 1=11〜20位, …）
+let sanpaiChart = null;
+const SANPAI_BANDS = [[1, 10], [11, 20], [21, 30], [31, 40], [41, 50]];
+
+// 集計条件ごとに結果を持っておき、条件を戻したときは通信しない
+const sanpaiCache = {};
+
+function sanpaiConditionKey_() {
+  const unit = document.getElementById('sanpai-unit-select').value;
+  const period = document.getElementById('sanpai-period-select').value;
+  const ym = document.getElementById('sanpai-month-select').value;
+  return unit + '|' + (period === 'month' ? ym : period);
+}
+
+async function loadSanpai_() {
+  const key = sanpaiConditionKey_();
+  if (sanpaiCache[key]) { cachedSanpai = sanpaiCache[key]; return; }
+
+  const unit = document.getElementById('sanpai-unit-select').value;
+  const periodSel = document.getElementById('sanpai-period-select').value;
+  const ym = document.getElementById('sanpai-month-select').value;
+  const period = (periodSel === 'month' && ym) ? ym : periodSel;
+  const data = await fetchJSONP(withKey(GAS_URL
+    + '?type=sanpai_rank&unit=' + encodeURIComponent(unit)
+    + '&period=' + encodeURIComponent(period)));
+  sanpaiCache[key] = data;
+  cachedSanpai = data;
+}
+
+async function openSanpaiTab(el) {
+  showTab('tab-sanpai', el);
+  if (cachedSanpai) { renderSanpai(); return; }
+
+  document.getElementById('sanpai-body').innerHTML =
+    '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
+  try {
+    await loadLazyTab_('sanpai');
+    renderSanpai();
+  } catch (err) {
+    document.getElementById('sanpai-body').innerHTML =
+      '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+  }
+}
+
+function populateSanpaiMonthSelect_() {
+  const sel = document.getElementById('sanpai-month-select');
+  if (!cachedSanpai || !cachedSanpai.months || sel.options.length) return;
+  const months = cachedSanpai.months.slice().reverse(); // 新しい月を上に
+  months.forEach(function(m) {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    sel.appendChild(o);
+  });
+}
+
+async function onSanpaiConditionChange() {
+  const periodSel = document.getElementById('sanpai-period-select').value;
+  document.getElementById('sanpai-month-select').style.display = (periodSel === 'month') ? '' : 'none';
+
+  document.getElementById('sanpai-body').innerHTML =
+    '<div class="empty empty-loading"><span class="spinner-sm"></span><br>読み込み中...</div>';
+  try {
+    await loadSanpai_();
+    populateSanpaiMonthSelect_();
+    renderSanpai();
+  } catch (err) {
+    document.getElementById('sanpai-body').innerHTML =
+      '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
+  }
+}
+
+function setSanpaiBand(i) {
+  sanpaiBand = i;
+  renderSanpaiBandTabs_();
+  renderSanpaiChart_();
+}
+
+function renderSanpaiBandTabs_() {
+  const wrap = document.getElementById('sanpai-band-tabs');
+  const total = (cachedSanpai && cachedSanpai.list) ? cachedSanpai.list.length : 0;
+  wrap.innerHTML = SANPAI_BANDS.map(function(b, i) {
+    if (b[0] > total) return '';
+    const cls = 'item-tab' + (i === sanpaiBand ? ' active' : '');
+    return '<div class="' + cls + '" onclick="setSanpaiBand(' + i + ')">' + b[0] + '〜' + b[1] + '位</div>';
+  }).join('');
+}
+
+// 金額は千円で表示する（サマリーの粗利益と単位を揃えるため）
+function sanpaiSen_(yen) { return yen / 1000; }
+function fmtSen_(yen, digits) {
+  const d = (digits === undefined) ? 0 : digits;
+  return sanpaiSen_(yen).toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+// 現場名だけでは会社が分からないことがあるため、得意先名と違う場合は併記する
+function sanpaiLabel_(r) {
+  if (cachedSanpai.unit === 'customer') return r.customer + '（現場' + r.siteCount + '件）';
+  return (r.site === r.customer) ? r.site : (r.customer + '／' + r.site);
+}
+
+function renderSanpai() {
+  const d = cachedSanpai;
+  const body = document.getElementById('sanpai-body');
+  const kpi = document.getElementById('sanpai-kpi');
+
+  if (!d || !d.list || !d.list.length) {
+    kpi.innerHTML = '';
+    document.getElementById('sanpai-band-tabs').innerHTML = '';
+    if (sanpaiChart) { sanpaiChart.destroy(); sanpaiChart = null; }
+    body.innerHTML = '<div class="empty">データがありません。スプレッドシートの「産廃_入力」シートに元データを貼り付けてください。</div>';
+    return;
+  }
+
+  const scope = d.scopeMonths || [];
+  const periodLabel = scope.length
+    ? (scope.length === 1 ? scope[0] : scope[0] + '〜' + scope[scope.length - 1] + '（' + scope.length + 'ヶ月）')
+    : '-';
+  const top50 = d.list.reduce(function(a, r) { return a + r.total; }, 0);
+
+  kpi.innerHTML =
+      kpiCard_('対象期間', periodLabel, '')
+    + kpiCard_('全体の売上', fmtSen_(d.totalAll), '千円')
+    + kpiCard_('トップ50の合計', fmtSen_(top50), '千円')
+    + kpiCard_('トップ50の構成比', d.totalAll ? (top50 / d.totalAll * 100).toFixed(1) : '0', '%');
+
+  renderSanpaiBandTabs_();
+  renderSanpaiChart_();
+
+  // ランキング表（トップ50を全件）
+  let html = '<div class="card"><h2>売上ランキング トップ' + d.list.length
+    + '<span style="float:right;font-size:12px;color:var(--muted);font-weight:400;">'
+    + (d.unit === 'customer' ? '得意先別' : '現場別') + '　除外 ' + (d.excludedCount || 0) + '件</span></h2>'
+    + '<div class="table-scroll"><table class="data-table compact">'
+    + '<thead><tr><th>順位</th><th>得意先</th>'
+    + (d.unit === 'customer' ? '<th class="num">現場数</th>' : '<th>現場</th>')
+    + '<th class="num">合計</th><th class="num">構成比</th><th class="num">月平均</th></tr></thead><tbody>';
+
+  d.list.forEach(function(r) {
+    const share = d.totalAll ? (r.total / d.totalAll * 100).toFixed(2) : '0.00';
+    const avg = scope.length ? r.total / scope.length : 0;
+    // 表示中の順位帯を目立たせる
+    const band = SANPAI_BANDS[sanpaiBand];
+    const inBand = r.rank >= band[0] && r.rank <= band[1];
+    html += '<tr' + (inBand ? ' style="background:var(--success-bg);"' : '') + '>'
+      + '<td>' + r.rank + '</td>'
+      + '<td>' + esc(r.customer) + '</td>'
+      + (d.unit === 'customer'
+          ? '<td class="num">' + r.siteCount + '</td>'
+          : '<td>' + esc(r.site) + '</td>')
+      + '<td class="num">' + fmtSen_(r.total) + ' 千円</td>'
+      + '<td class="num">' + share + '%</td>'
+      + '<td class="num">' + fmtSen_(avg) + ' 千円</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  body.innerHTML = html;
+}
+
+function renderSanpaiChart_() {
+  const d = cachedSanpai;
+  const canvas = document.getElementById('sanpai-chart');
+  if (!d || !d.list || !canvas) return;
+
+  const band = SANPAI_BANDS[sanpaiBand];
+  const rows = d.list.filter(function(r) { return r.rank >= band[0] && r.rank <= band[1]; });
+  document.getElementById('sanpai-chart-note').textContent =
+    band[0] + '〜' + band[1] + '位の月別推移（単位: 千円）';
+
+  const palette = ['#1F4E78', '#2E8B57', '#C0504D', '#8064A2', '#4BACC6',
+                   '#F79646', '#9BBB59', '#D99694', '#4F81BD', '#948A54'];
+  const datasets = rows.map(function(r, i) {
+    return {
+      label: (r.rank) + '位 ' + sanpaiLabel_(r),
+      data: r.vals.map(function(v) { return sanpaiSen_(v); }),
+      borderColor: palette[i % palette.length],
+      backgroundColor: palette[i % palette.length],
+      borderWidth: 2, pointRadius: 2, tension: 0.25, fill: false
+    };
+  });
+
+  if (sanpaiChart) sanpaiChart.destroy();
+  // 表示中にウィンドウ幅が変わってもグラフがはみ出さないよう、明示的に追従させる
+  if (!window._sanpaiResizeBound) {
+    window._sanpaiResizeBound = true;
+    window.addEventListener('resize', function() { if (sanpaiChart) sanpaiChart.resize(); });
+  }
+  sanpaiChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels: d.months, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: {
+        // 標準の凡例は折り返し位置が揃わないため使わず、下に自前の凡例を並べる
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ctx.dataset.label + ': ' + Math.round(ctx.parsed.y).toLocaleString('ja-JP') + ' 千円'; }
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: '売上 (千円)' } }
+      }
+    }
+  });
+
+  renderSanpaiLegend_();
+}
+
+// グラフの凡例を4列のグリッドで描く。クリックでその系列の表示/非表示を切り替える
+function renderSanpaiLegend_() {
+  const el = document.getElementById('sanpai-legend');
+  if (!el || !sanpaiChart) return;
+  el.innerHTML = sanpaiChart.data.datasets.map(function(ds, i) {
+    const off = sanpaiChart.isDatasetVisible(i) ? '' : ' is-off';
+    return '<button type="button" class="chart-legend-item' + off + '"'
+      + ' onclick="toggleSanpaiSeries_(' + i + ')" title="' + esc(ds.label) + '">'
+      + '<span class="chart-legend-chip" style="background:' + esc(ds.borderColor) + ';"></span>'
+      + '<span class="chart-legend-label">' + esc(ds.label) + '</span>'
+      + '</button>';
+  }).join('');
+}
+
+function toggleSanpaiSeries_(i) {
+  if (!sanpaiChart) return;
+  sanpaiChart.setDatasetVisibility(i, !sanpaiChart.isDatasetVisible(i));
+  sanpaiChart.update();
+  renderSanpaiLegend_();
+}
+
+// ============================================================
 // AIレポート描画
 // ============================================================
 function renderInfographicReport() {
@@ -2911,6 +3179,10 @@ const LAZY_TABS = {
     loaded: function() { return !!cachedDanboru; },
     load: function() { return loadDanboru_().then(function() { populateDanboruMonthSelect_(); }); }
   },
+  sanpai: {
+    loaded: function() { return !!cachedSanpai; },
+    load: function() { return loadSanpai_().then(function() { populateSanpaiMonthSelect_(); }); }
+  },
   // 受注案件は、開いた時に選択される月の一覧だけを先読みする。
   // 年度累計ランキングはプルダウンで選ばれた時に初めて読み込むため、ここでは取得しない。
   juchu: {
@@ -2960,7 +3232,7 @@ async function prefetchLazyTabs_() {
   if (_lazyPrefetchStarted) return;
   _lazyPrefetchStarted = true;
   // 画面左のタブの並びに合わせておく（よく見るものから先に用意される）
-  const order = ['shinki', 'juchu', 'kengaku', 'kanriNeage', 'ukakezan', 'fuel', 'danboru'];
+  const order = ['shinki', 'juchu', 'kengaku', 'kanriNeage', 'ukakezan', 'fuel', 'danboru', 'sanpai'];
   for (var i = 0; i < order.length; i++) {
     // 失敗しても止めない（そのタブを開いた時に改めて読み込まれる）
     try { await loadLazyTab_(order[i]); } catch (e) { /* 何もしない */ }
