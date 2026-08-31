@@ -459,7 +459,9 @@
   .data-table thead th { font-size: 11px; color: var(--muted); font-weight: 600; white-space: nowrap; }
   .data-table tbody tr { border-bottom: 1px solid var(--border); }
   .data-table tbody tr:hover { background: var(--bg-subtle); }
-  .data-table .num { text-align: right; }
+  .data-table .num { text-align: right; white-space: nowrap; }
+  /* 長い会社名・現場名はこの列で折り返させ、金額の列から幅を奪わせない */
+  .data-table .col-name { width: 34%; }
   .data-table.align-top tbody tr { vertical-align: top; }
 
   /* AIレポート */
@@ -2049,8 +2051,8 @@ function renderDanboru() {
     + '<span style="float:right;font-size:12px;color:var(--muted);font-weight:400;">'
     + (d.unit === 'customer' ? '得意先別' : '現場別') + '　除外 ' + (d.excludedCount || 0) + '件</span></h2>'
     + '<div class="table-scroll"><table class="data-table compact">'
-    + '<thead><tr><th>順位</th><th>得意先</th>'
-    + (d.unit === 'customer' ? '<th class="num">現場数</th>' : '<th>現場</th>')
+    + '<thead><tr><th>順位</th><th class="col-name">得意先</th>'
+    + (d.unit === 'customer' ? '<th class="num">現場数</th>' : '<th class="col-name">現場</th>')
     + '<th class="num">合計</th><th class="num">構成比</th><th class="num">月平均</th></tr></thead><tbody>';
 
   d.list.forEach(function(r) {
@@ -2061,10 +2063,10 @@ function renderDanboru() {
     const inBand = r.rank >= band[0] && r.rank <= band[1];
     html += '<tr' + (inBand ? ' style="background:var(--success-bg);"' : '') + '>'
       + '<td>' + r.rank + '</td>'
-      + '<td>' + esc(r.customer) + '</td>'
+      + '<td class="col-name">' + esc(r.customer) + '</td>'
       + (d.unit === 'customer'
           ? '<td class="num">' + r.siteCount + '</td>'
-          : '<td>' + esc(r.site) + '</td>')
+          : '<td class="col-name">' + esc(r.site) + '</td>')
       + '<td class="num">' + fmtT_(r.total) + ' t</td>'
       + '<td class="num">' + share + '%</td>'
       + '<td class="num">' + fmtT_(avg) + ' t</td>'
@@ -2292,8 +2294,8 @@ function renderSanpai() {
     + '<span style="float:right;font-size:12px;color:var(--muted);font-weight:400;">'
     + (d.unit === 'customer' ? '得意先別' : '現場別') + '　除外 ' + (d.excludedCount || 0) + '件</span></h2>'
     + '<div class="table-scroll"><table class="data-table compact">'
-    + '<thead><tr><th>順位</th><th>得意先</th>'
-    + (d.unit === 'customer' ? '<th class="num">現場数</th>' : '<th>現場</th>')
+    + '<thead><tr><th>順位</th><th class="col-name">得意先</th>'
+    + (d.unit === 'customer' ? '<th class="num">現場数</th>' : '<th class="col-name">現場</th>')
     + '<th class="num">合計</th><th class="num">構成比</th><th class="num">月平均</th></tr></thead><tbody>';
 
   d.list.forEach(function(r) {
@@ -2304,10 +2306,10 @@ function renderSanpai() {
     const inBand = r.rank >= band[0] && r.rank <= band[1];
     html += '<tr' + (inBand ? ' style="background:var(--success-bg);"' : '') + '>'
       + '<td>' + r.rank + '</td>'
-      + '<td>' + esc(r.customer) + '</td>'
+      + '<td class="col-name">' + esc(r.customer) + '</td>'
       + (d.unit === 'customer'
           ? '<td class="num">' + r.siteCount + '</td>'
-          : '<td>' + esc(r.site) + '</td>')
+          : '<td class="col-name">' + esc(r.site) + '</td>')
       + '<td class="num">' + fmtSen_(r.total) + ' 千円</td>'
       + '<td class="num">' + share + '%</td>'
       + '<td class="num">' + fmtSen_(avg) + ' 千円</td>'
