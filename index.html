@@ -808,6 +808,20 @@
     </div>
 
     <div id="danboru-body"><div class="empty">タブを開くと、段ボール排出量のランキングが表示されます</div></div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>月次データの取り込み</h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+        書き出したファイルをそのまま入れてください。
+        並び順が前月と違っていても、得意先コードと現場コードで照合して正しい行に入ります。
+      </div>
+      <div id="danboru-drop" class="drop-zone" onclick="document.getElementById('danboru-file').click()">
+        <div class="drop-zone-main">ここにファイルをドロップ</div>
+        <div class="drop-zone-sub">またはクリックして選択（.xlsx / .csv）</div>
+      </div>
+      <input type="file" id="danboru-file" accept=".xlsx,.csv" style="display:none" onchange="onRankFilePicked_('danboru', this)">
+      <div id="danboru-import-result"></div>
+    </div>
   </div>
 
   <!-- 産廃売上トップ50タブ -->
@@ -849,7 +863,7 @@
         <div class="drop-zone-main">ここにファイルをドロップ</div>
         <div class="drop-zone-sub">またはクリックして選択（.xlsx / .csv）</div>
       </div>
-      <input type="file" id="sanpai-file" accept=".xlsx,.csv" style="display:none" onchange="onSanpaiFilePicked_(this)">
+      <input type="file" id="sanpai-file" accept=".xlsx,.csv" style="display:none" onchange="onRankFilePicked_('sanpai', this)">
       <div id="sanpai-import-result"></div>
     </div>
   </div>
@@ -1978,6 +1992,7 @@ async function loadDanboru_() {
 
 async function openDanboruTab(el) {
   showTab('tab-danboru', el);
+  bindRankDrop_('danboru');
   if (cachedDanboru) { renderDanboru(); return; }
 
   document.getElementById('danboru-body').innerHTML =
@@ -2222,7 +2237,7 @@ async function loadSanpai_() {
 
 async function openSanpaiTab(el) {
   showTab('tab-sanpai', el);
-  bindSanpaiDrop_();
+  bindRankDrop_('sanpai');
   if (cachedSanpai) { renderSanpai(); return; }
 
   document.getElementById('sanpai-body').innerHTML =
@@ -2424,15 +2439,42 @@ function toggleSanpaiSeries_(i) {
 }
 
 // ============================================================
-// 産廃売上：ファイルの取り込み
+// ファイルの取り込み（産廃売上トップ50・段ボールトップ50 共通）
 //   基幹システムの書き出しは月ごとに行の並びが変わるため、貼り付けでは列がずれる。
 //   ファイルをそのまま受け取り、得意先コード＋現場コードで照合して該当月だけを更新する。
+//   2つのタブは画面の置き場所と単位が違うだけなので、その差を下の設定表に閉じ込めている。
 // ============================================================
 
-// 解析結果を確定ボタンまで持ち回る
-let sanpaiImportPayload_ = null;
+const RANK_IMPORT = {
+  sanpai: {
+    label: '産廃売上', unit: '千円',
+    fmt: function(v) { return Math.round(v / 1000).toLocaleString('ja-JP'); },
+    reload: async function() {
+      Object.keys(sanpaiCache).forEach(function(k) { delete sanpaiCache[k]; });
+      cachedSanpai = null;
+      document.getElementById('sanpai-month-select').innerHTML = '';
+      await loadSanpai_();
+      populateSanpaiMonthSelect_();
+      renderSanpai();
+    }
+  },
+  danboru: {
+    label: '段ボール', unit: 't',
+    fmt: function(v) { return (v / 1000).toLocaleString('ja-JP', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); },
+    reload: async function() {
+      Object.keys(danboruCache).forEach(function(k) { delete danboruCache[k]; });
+      cachedDanboru = null;
+      document.getElementById('danboru-month-select').innerHTML = '';
+      await loadDanboru_();
+      populateDanboruMonthSelect_();
+      renderDanboru();
+    }
+  }
+};
 
-// --- ZIP（xlsx）を展開する。Excelは deflate 圧縮か無圧縮のどちらかで格納する ---
+// 解析結果を確定ボタンまで持ち回る（タブごとに別で持つ）
+const rankImportPayload_ = {};
+
 async function unzip_(buf) {
   const dv = new DataView(buf);
   const bytes = new Uint8Array(buf);
@@ -2478,22 +2520,18 @@ async function unzip_(buf) {
   }
   return files;
 }
-
 function xmlUnesc_(x) {
   return x.replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCodePoint(parseInt(h, 16)); })
     .replace(/&#(\d+);/g, function(_, d) { return String.fromCodePoint(parseInt(d, 10)); })
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 }
-
 function colToIndex_(ref) {
   const m = ref.match(/^([A-Z]+)/);
   var n = 0;
   for (var i = 0; i < m[1].length; i++) n = n * 26 + (m[1].charCodeAt(i) - 64);
   return n - 1;
 }
-
-// xlsx を2次元配列にする（先頭シート、または「現場ごと」シートを使う）
 async function parseXlsx_(buf) {
   const files = await unzip_(buf);
 
@@ -2555,8 +2593,6 @@ async function parseXlsx_(buf) {
   });
   return { rows: rows.map(function(r) { return r || []; }), sheetName: pick.name };
 }
-
-// CSVを2次元配列にする。ExcelのCSVはShift_JISのことがあるため、文字化けしたら読み直す
 function parseCsv_(buf) {
   var text = new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
   if (text.indexOf('\uFFFD') >= 0) {
@@ -2578,15 +2614,12 @@ function parseCsv_(buf) {
   if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
   return { rows: rows, sheetName: 'CSV' };
 }
-
-// 見出しから "2026-07" 形式の月キーを取り出す（読めなければ空）
 function importMonthKey_(v) {
   const m = String(v == null ? '' : v).trim().match(/^(\d{4})[\/\-年.](\d{1,2})/);
   return m ? m[1] + '-' + ('0' + m[2]).slice(-2) : '';
 }
-
 // 2次元配列から、見出し行・列の位置・月の列を割り出して送信用の形にする
-function buildSanpaiImport_(grid) {
+function buildRankImport_(grid) {
   var headRow = -1;
   for (var i = 0; i < Math.min(grid.length, 30); i++) {
     const line = (grid[i] || []).map(function(x) { return String(x == null ? '' : x).replace(/\s/g, ''); });
@@ -2622,24 +2655,24 @@ function buildSanpaiImport_(grid) {
   return { months: months, rows: rows };
 }
 
-function sanpaiImportMsg_(html) {
-  document.getElementById('sanpai-import-result').innerHTML = html;
+function rankImportMsg_(kind, html) {
+  document.getElementById(kind + '-import-result').innerHTML = html;
 }
 
-function setSanpaiDropBusy_(busy) {
-  document.getElementById('sanpai-drop').classList.toggle('is-busy', !!busy);
+function setRankDropBusy_(kind, busy) {
+  document.getElementById(kind + '-drop').classList.toggle('is-busy', !!busy);
 }
 
-function onSanpaiFilePicked_(input) {
+function onRankFilePicked_(kind, input) {
   const f = input.files && input.files[0];
   input.value = '';   // 同じファイルをもう一度選べるようにする
-  if (f) handleSanpaiFile_(f);
+  if (f) handleRankFile_(kind, f);
 }
 
-async function handleSanpaiFile_(file) {
-  sanpaiImportPayload_ = null;
-  setSanpaiDropBusy_(true);
-  sanpaiImportMsg_('<div class="empty empty-loading"><span class="spinner-sm"></span><br>ファイルを読んでいます...</div>');
+async function handleRankFile_(kind, file) {
+  rankImportPayload_[kind] = null;
+  setRankDropBusy_(kind, true);
+  rankImportMsg_(kind, '<div class="empty empty-loading"><span class="spinner-sm"></span><br>ファイルを読んでいます...</div>');
   try {
     const buf = await file.arrayBuffer();
     const lower = file.name.toLowerCase();
@@ -2648,25 +2681,25 @@ async function handleSanpaiFile_(file) {
     else if (lower.endsWith('.xlsx')) parsed = await parseXlsx_(buf);
     else throw new Error('.xlsx または .csv のファイルを入れてください');
 
-    const built = buildSanpaiImport_(parsed.rows);
+    const built = buildRankImport_(parsed.rows);
 
     // 書き込まずに、何がどう変わるかだけ先に確かめる
-    const preview = await postSanpaiImport_(built, true);
-    sanpaiImportPayload_ = built;
-    renderSanpaiImportPreview_(preview, file.name, parsed.sheetName);
+    const preview = await postRankImport_(kind, built, true);
+    rankImportPayload_[kind] = built;
+    renderRankImportPreview_(kind, preview, file.name, parsed.sheetName);
   } catch (err) {
-    sanpaiImportMsg_('<div class="error-box">読み込めませんでした。<br>' + esc(err.message) + '</div>');
+    rankImportMsg_(kind, '<div class="error-box">読み込めませんでした。<br>' + esc(err.message) + '</div>');
   } finally {
-    setSanpaiDropBusy_(false);
+    setRankDropBusy_(kind, false);
   }
 }
 
-async function postSanpaiImport_(built, dryRun) {
+async function postRankImport_(kind, built, dryRun) {
   const res = await fetch(GAS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({
-      action: 'import_sanpai', key: ACCESS_KEY, dryRun: !!dryRun,
+      action: 'import_rank', target: kind, key: ACCESS_KEY, dryRun: !!dryRun,
       months: built.months, rows: built.rows
     })
   });
@@ -2675,9 +2708,9 @@ async function postSanpaiImport_(built, dryRun) {
   return data;
 }
 
-function renderSanpaiImportPreview_(d, fileName, sheetName) {
-  const yen = function(n) { return Math.round(n).toLocaleString('ja-JP'); };
-  const monthList = d.monthTotals.map(function(m) { return m.ym + '（' + yen(m.total / 1000) + ' 千円）'; }).join('、');
+function renderRankImportPreview_(kind, d, fileName, sheetName) {
+  const cfg = RANK_IMPORT[kind];
+  const monthList = d.monthTotals.map(function(m) { return m.ym + '（' + cfg.fmt(m.total) + ' ' + cfg.unit + '）'; }).join('、');
 
   var html = '<div class="import-summary">';
   html += '<div style="font-weight:600;">この内容で取り込みます</div><dl>';
@@ -2686,58 +2719,53 @@ function renderSanpaiImportPreview_(d, fileName, sheetName) {
   html += '<dt>現場の数</dt><dd>' + d.fileSites + ' 件</dd>';
   html += '<dt>更新される行</dt><dd>' + d.updated + ' 件</dd>';
   html += '<dt>新しく増える行</dt><dd>' + d.added + ' 件</dd>';
-  html += '<dt>0円になる行</dt><dd>' + d.zeroed + ' 件<span style="color:var(--muted);">（今回のファイルに無かった現場）</span></dd>';
+  html += '<dt>0になる行</dt><dd>' + d.zeroed + ' 件<span style="color:var(--muted);">（今回のファイルに無かった現場）</span></dd>';
   if (d.fileDupCount) {
     html += '<dt>合算した行</dt><dd>' + d.fileDupCount + ' 件<span style="color:var(--muted);">（同じコードが複数あったため）</span></dd>';
   }
   html += '</dl>';
   html += '<div class="modal-actions" style="justify-content:flex-start;">'
-    + '<button class="btn btn-primary" onclick="confirmSanpaiImport_()">この内容で取り込む</button>'
-    + '<button class="btn" onclick="cancelSanpaiImport_()">やめる</button></div>';
+    + '<button class="btn btn-primary" onclick="confirmRankImport_(\'' + kind + '\')">この内容で取り込む</button>'
+    + '<button class="btn" onclick="cancelRankImport_(\'' + kind + '\')">やめる</button></div>';
   html += '</div>';
-  sanpaiImportMsg_(html);
+  rankImportMsg_(kind, html);
 }
 
-function cancelSanpaiImport_() {
-  sanpaiImportPayload_ = null;
-  sanpaiImportMsg_('');
+function cancelRankImport_(kind) {
+  rankImportPayload_[kind] = null;
+  rankImportMsg_(kind, '');
 }
 
-async function confirmSanpaiImport_() {
-  if (!sanpaiImportPayload_) return;
-  setSanpaiDropBusy_(true);
-  sanpaiImportMsg_('<div class="empty empty-loading"><span class="spinner-sm"></span><br>取り込んでいます...</div>');
+async function confirmRankImport_(kind) {
+  const built = rankImportPayload_[kind];
+  if (!built) return;
+  const cfg = RANK_IMPORT[kind];
+  setRankDropBusy_(kind, true);
+  rankImportMsg_(kind, '<div class="empty empty-loading"><span class="spinner-sm"></span><br>取り込んでいます...</div>');
   try {
-    const d = await postSanpaiImport_(sanpaiImportPayload_, false);
-    sanpaiImportPayload_ = null;
+    const d = await postRankImport_(kind, built, false);
+    rankImportPayload_[kind] = null;
 
     // 取り込んだ内容でランキングを取り直す（条件ごとのキャッシュも捨てる）
-    Object.keys(sanpaiCache).forEach(function(k) { delete sanpaiCache[k]; });
-    cachedSanpai = null;
-    const sel = document.getElementById('sanpai-month-select');
-    sel.innerHTML = '';
-    await loadSanpai_();
-    populateSanpaiMonthSelect_();
-    renderSanpai();
+    await cfg.reload();
 
-    const yen = function(n) { return Math.round(n).toLocaleString('ja-JP'); };
-    sanpaiImportMsg_('<div class="import-summary" style="color:var(--success-text);font-weight:600;">'
+    const total = d.monthTotals.reduce(function(a, m) { return a + m.total; }, 0);
+    rankImportMsg_(kind, '<div class="import-summary" style="color:var(--success-text);font-weight:600;">'
       + '✅ 取り込みました：' + d.months.join('、')
-      + '（更新 ' + d.updated + ' 件 ／ 追加 ' + d.added + ' 件 ／ 0円化 ' + d.zeroed + ' 件 ／ 合計 '
-      + yen(d.monthTotals.reduce(function(a, m) { return a + m.total; }, 0) / 1000) + ' 千円）</div>');
+      + '（更新 ' + d.updated + ' 件 ／ 追加 ' + d.added + ' 件 ／ 0化 ' + d.zeroed + ' 件 ／ 合計 '
+      + cfg.fmt(total) + ' ' + cfg.unit + '）</div>');
   } catch (err) {
-    sanpaiImportMsg_('<div class="error-box">取り込みに失敗しました。<br>' + esc(err.message) + '</div>');
+    rankImportMsg_(kind, '<div class="error-box">取り込みに失敗しました。<br>' + esc(err.message) + '</div>');
   } finally {
-    setSanpaiDropBusy_(false);
+    setRankDropBusy_(kind, false);
   }
 }
 
 // ドラッグ＆ドロップの受け口。タブが描かれた後に一度だけ結びつける
-function bindSanpaiDrop_() {
-  if (window._sanpaiDropBound) return;
-  const zone = document.getElementById('sanpai-drop');
-  if (!zone) return;
-  window._sanpaiDropBound = true;
+function bindRankDrop_(kind) {
+  const zone = document.getElementById(kind + '-drop');
+  if (!zone || zone.dataset.bound) return;
+  zone.dataset.bound = '1';
   ['dragenter', 'dragover'].forEach(function(ev) {
     zone.addEventListener(ev, function(e) {
       e.preventDefault(); e.stopPropagation(); zone.classList.add('is-over');
@@ -2750,14 +2778,17 @@ function bindSanpaiDrop_() {
   });
   zone.addEventListener('drop', function(e) {
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) handleSanpaiFile_(f);
+    if (f) handleRankFile_(kind, f);
   });
   // ページの他の場所に落としてファイルが開いてしまうのを防ぐ
-  ['dragover', 'drop'].forEach(function(ev) {
-    window.addEventListener(ev, function(e) {
-      if (!zone.contains(e.target)) e.preventDefault();
+  if (!window._rankDropGuard) {
+    window._rankDropGuard = true;
+    ['dragover', 'drop'].forEach(function(ev) {
+      window.addEventListener(ev, function(e) {
+        if (!e.target.closest || !e.target.closest('.drop-zone')) e.preventDefault();
+      });
     });
-  });
+  }
 }
 
 // ============================================================
