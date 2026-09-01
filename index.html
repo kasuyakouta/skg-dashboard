@@ -533,6 +533,22 @@
   }
   .table-edit-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--success-bg); }
 
+  /* 月次データの取り込み欄（産廃売上トップ50） */
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 28px 16px; text-align: center; color: var(--muted);
+    cursor: pointer; background: var(--bg-subtle); transition: border-color .15s, background .15s;
+  }
+  .drop-zone:hover { border-color: var(--accent); color: var(--accent); }
+  .drop-zone.is-over { border-color: var(--accent); background: var(--success-bg); color: var(--accent); }
+  .drop-zone.is-busy { opacity: .5; pointer-events: none; }
+  .drop-zone-main { font-size: 14px; font-weight: 600; }
+  .drop-zone-sub { font-size: 12px; margin-top: 6px; }
+  .import-summary { margin-top: 14px; font-size: 13px; }
+  .import-summary dl { display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px; margin: 10px 0 0; }
+  .import-summary dt { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .import-summary dd { margin: 0; }
+
   /* 一覧表の中でクリックして詳細を開けるセル */
   .table-link { color: var(--accent); cursor: pointer; font-weight: 600; }
   .table-link:hover { text-decoration: underline; }
@@ -822,6 +838,20 @@
     </div>
 
     <div id="sanpai-body"><div class="empty">タブを開くと、産廃売上のランキングが表示されます</div></div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>月次データの取り込み</h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+        基幹システムから書き出したファイルをそのまま入れてください。
+        並び順が前月と違っていても、得意先コードと現場コードで照合して正しい行に入ります。
+      </div>
+      <div id="sanpai-drop" class="drop-zone" onclick="document.getElementById('sanpai-file').click()">
+        <div class="drop-zone-main">ここにファイルをドロップ</div>
+        <div class="drop-zone-sub">またはクリックして選択（.xlsx / .csv）</div>
+      </div>
+      <input type="file" id="sanpai-file" accept=".xlsx,.csv" style="display:none" onchange="onSanpaiFilePicked_(this)">
+      <div id="sanpai-import-result"></div>
+    </div>
   </div>
 
   <!-- AIレポートタブ -->
@@ -2192,6 +2222,7 @@ async function loadSanpai_() {
 
 async function openSanpaiTab(el) {
   showTab('tab-sanpai', el);
+  bindSanpaiDrop_();
   if (cachedSanpai) { renderSanpai(); return; }
 
   document.getElementById('sanpai-body').innerHTML =
@@ -2390,6 +2421,343 @@ function toggleSanpaiSeries_(i) {
   sanpaiChart.setDatasetVisibility(i, !sanpaiChart.isDatasetVisible(i));
   sanpaiChart.update();
   renderSanpaiLegend_();
+}
+
+// ============================================================
+// 産廃売上：ファイルの取り込み
+//   基幹システムの書き出しは月ごとに行の並びが変わるため、貼り付けでは列がずれる。
+//   ファイルをそのまま受け取り、得意先コード＋現場コードで照合して該当月だけを更新する。
+// ============================================================
+
+// 解析結果を確定ボタンまで持ち回る
+let sanpaiImportPayload_ = null;
+
+// --- ZIP（xlsx）を展開する。Excelは deflate 圧縮か無圧縮のどちらかで格納する ---
+async function unzip_(buf) {
+  const dv = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  // 末尾の End of Central Directory を探す
+  var eocd = -1;
+  for (var i = bytes.length - 22; i >= 0 && i > bytes.length - 65558; i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('xlsxとして読めませんでした');
+  const count = dv.getUint16(eocd + 10, true);
+  var off = dv.getUint32(eocd + 16, true);
+
+  const files = {};
+  for (var n = 0; n < count; n++) {
+    if (dv.getUint32(off, true) !== 0x02014b50) break;
+    const method = dv.getUint16(off + 10, true);
+    const compSize = dv.getUint32(off + 20, true);
+    const nameLen = dv.getUint16(off + 28, true);
+    const extraLen = dv.getUint16(off + 30, true);
+    const commentLen = dv.getUint16(off + 32, true);
+    const localOff = dv.getUint32(off + 42, true);
+    const name = new TextDecoder('utf-8').decode(bytes.subarray(off + 46, off + 46 + nameLen));
+
+    // ローカルヘッダを読んで、実データの開始位置を出す
+    const lNameLen = dv.getUint16(localOff + 26, true);
+    const lExtraLen = dv.getUint16(localOff + 28, true);
+    const dataStart = localOff + 30 + lNameLen + lExtraLen;
+    const raw = bytes.subarray(dataStart, dataStart + compSize);
+
+    if (method === 0) {
+      files[name] = new TextDecoder('utf-8').decode(raw);
+    } else if (method === 8) {
+      if (typeof DecompressionStream === 'undefined') {
+        throw new Error('このブラウザは.xlsxの展開に対応していません。Excelで「CSV UTF-8」として保存してからお試しください');
+      }
+      const ds = new DecompressionStream('deflate-raw');
+      const stream = new Blob([raw]).stream().pipeThrough(ds);
+      files[name] = await new Response(stream).text();
+    } else {
+      throw new Error('対応していない圧縮方式です: ' + method);
+    }
+    off += 46 + nameLen + extraLen + commentLen;
+  }
+  return files;
+}
+
+function xmlUnesc_(x) {
+  return x.replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCodePoint(parseInt(h, 16)); })
+    .replace(/&#(\d+);/g, function(_, d) { return String.fromCodePoint(parseInt(d, 10)); })
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+}
+
+function colToIndex_(ref) {
+  const m = ref.match(/^([A-Z]+)/);
+  var n = 0;
+  for (var i = 0; i < m[1].length; i++) n = n * 26 + (m[1].charCodeAt(i) - 64);
+  return n - 1;
+}
+
+// xlsx を2次元配列にする（先頭シート、または「現場ごと」シートを使う）
+async function parseXlsx_(buf) {
+  const files = await unzip_(buf);
+
+  // 共有文字列
+  const shared = [];
+  const ssXml = files['xl/sharedStrings.xml'];
+  if (ssXml) {
+    (ssXml.match(/<si>[\s\S]*?<\/si>|<si\/>/g) || []).forEach(function(si) {
+      const parts = si.match(/<t[^>]*>([\s\S]*?)<\/t>/g) || [];
+      shared.push(parts.map(function(t) { return xmlUnesc_(t.replace(/<t[^>]*>/, '').replace(/<\/t>/, '')); }).join(''));
+    });
+  }
+
+  // シート名 → ファイル名
+  const wb = files['xl/workbook.xml'] || '';
+  const rels = files['xl/_rels/workbook.xml.rels'] || '';
+  const relMap = {};
+  (rels.match(/<Relationship[^>]*>/g) || []).forEach(function(r) {
+    const id = (r.match(/Id="([^"]+)"/) || [])[1];
+    const tg = (r.match(/Target="([^"]+)"/) || [])[1];
+    if (id && tg) relMap[id] = 'xl/' + tg.replace(/^\/?xl\//, '').replace(/^\//, '');
+  });
+  const sheets = [];
+  (wb.match(/<sheet[^>]*\/?>/g) || []).forEach(function(t) {
+    const name = xmlUnesc_((t.match(/name="([^"]+)"/) || [])[1] || '');
+    const rid = (t.match(/r:id="([^"]+)"/) || [])[1];
+    if (name && relMap[rid]) sheets.push({ name: name, file: relMap[rid] });
+  });
+  if (!sheets.length) throw new Error('シートが見つかりませんでした');
+
+  // 現場コードを持つのは現場単位のシートなので、あればそれを優先する
+  const pick = sheets.find(function(x) { return x.name.indexOf('現場') >= 0; }) || sheets[0];
+  const xml = files[pick.file] || '';
+
+  const rows = [];
+  (xml.match(/<row[^>]*>[\s\S]*?<\/row>|<row[^>]*\/>/g) || []).forEach(function(rowXml) {
+    const rIdx = parseInt((rowXml.match(/ r="(\d+)"/) || [])[1], 10) - 1;
+    const arr = [];
+    (rowXml.match(/<c[^>]*>[\s\S]*?<\/c>|<c[^>]*\/>/g) || []).forEach(function(c) {
+      const ref = (c.match(/ r="([A-Z]+\d+)"/) || [])[1];
+      if (!ref) return;
+      const t = (c.match(/ t="([^"]+)"/) || [])[1];
+      var v = null;
+      if (t === 'inlineStr') {
+        const parts = c.match(/<t[^>]*>([\s\S]*?)<\/t>/g) || [];
+        v = parts.map(function(x) { return xmlUnesc_(x.replace(/<t[^>]*>/, '').replace(/<\/t>/, '')); }).join('');
+      } else {
+        const m = c.match(/<v>([\s\S]*?)<\/v>/);
+        if (m) {
+          const raw = xmlUnesc_(m[1]);
+          if (t === 's') v = shared[parseInt(raw, 10)];
+          else if (t === 'str' || t === 'e') v = raw;
+          else v = (raw === '') ? null : Number(raw);
+        }
+      }
+      arr[colToIndex_(ref)] = v;
+    });
+    rows[rIdx] = arr;
+  });
+  return { rows: rows.map(function(r) { return r || []; }), sheetName: pick.name };
+}
+
+// CSVを2次元配列にする。ExcelのCSVはShift_JISのことがあるため、文字化けしたら読み直す
+function parseCsv_(buf) {
+  var text = new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
+  if (text.indexOf('\uFFFD') >= 0) {
+    try { text = new TextDecoder('shift_jis').decode(buf); } catch (e) { /* そのまま使う */ }
+  }
+  const rows = [];
+  var row = [], cell = '', inQuote = false;
+  for (var i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuote) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; } else inQuote = false;
+      } else cell += ch;
+    } else if (ch === '"') { inQuote = true; }
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (ch !== '\r') { cell += ch; }
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return { rows: rows, sheetName: 'CSV' };
+}
+
+// 見出しから "2026-07" 形式の月キーを取り出す（読めなければ空）
+function importMonthKey_(v) {
+  const m = String(v == null ? '' : v).trim().match(/^(\d{4})[\/\-年.](\d{1,2})/);
+  return m ? m[1] + '-' + ('0' + m[2]).slice(-2) : '';
+}
+
+// 2次元配列から、見出し行・列の位置・月の列を割り出して送信用の形にする
+function buildSanpaiImport_(grid) {
+  var headRow = -1;
+  for (var i = 0; i < Math.min(grid.length, 30); i++) {
+    const line = (grid[i] || []).map(function(x) { return String(x == null ? '' : x).replace(/\s/g, ''); });
+    if (line.indexOf('得意先コード') >= 0 && line.indexOf('現場コード') >= 0) { headRow = i; break; }
+  }
+  if (headRow < 0) throw new Error('見出し行（得意先コード・現場コード）が見つかりませんでした');
+
+  const head = (grid[headRow] || []).map(function(x) { return String(x == null ? '' : x).replace(/\s/g, ''); });
+  const iCust = head.indexOf('得意先コード');
+  const iSite = head.indexOf('現場コード');
+  const iCustName = head.indexOf('得意先');
+  const iSiteName = head.indexOf('現場');
+  if (iCustName < 0 || iSiteName < 0) throw new Error('「得意先」「現場」の列が見つかりませんでした');
+
+  const monthCols = [], months = [];
+  (grid[headRow] || []).forEach(function(v, c) {
+    const k = importMonthKey_(v);
+    if (k) { monthCols.push(c); months.push(k); }
+  });
+  if (!months.length) throw new Error('月の列（2026/08 のような見出し）が見つかりませんでした');
+
+  const rows = [];
+  for (var r = headRow + 1; r < grid.length; r++) {
+    const line = grid[r] || [];
+    const cc = String(line[iCust] == null ? '' : line[iCust]).trim();
+    const sc = String(line[iSite] == null ? '' : line[iSite]).trim();
+    if (!cc && !sc) continue;
+    const vals = monthCols.map(function(c) { return Number(String(line[c] == null ? 0 : line[c]).replace(/,/g, '')) || 0; });
+    rows.push([cc, sc, String(line[iCustName] == null ? '' : line[iCustName]).trim(),
+               String(line[iSiteName] == null ? '' : line[iSiteName]).trim()].concat(vals));
+  }
+  if (!rows.length) throw new Error('明細行が1件もありませんでした');
+  return { months: months, rows: rows };
+}
+
+function sanpaiImportMsg_(html) {
+  document.getElementById('sanpai-import-result').innerHTML = html;
+}
+
+function setSanpaiDropBusy_(busy) {
+  document.getElementById('sanpai-drop').classList.toggle('is-busy', !!busy);
+}
+
+function onSanpaiFilePicked_(input) {
+  const f = input.files && input.files[0];
+  input.value = '';   // 同じファイルをもう一度選べるようにする
+  if (f) handleSanpaiFile_(f);
+}
+
+async function handleSanpaiFile_(file) {
+  sanpaiImportPayload_ = null;
+  setSanpaiDropBusy_(true);
+  sanpaiImportMsg_('<div class="empty empty-loading"><span class="spinner-sm"></span><br>ファイルを読んでいます...</div>');
+  try {
+    const buf = await file.arrayBuffer();
+    const lower = file.name.toLowerCase();
+    var parsed;
+    if (lower.endsWith('.csv')) parsed = parseCsv_(buf);
+    else if (lower.endsWith('.xlsx')) parsed = await parseXlsx_(buf);
+    else throw new Error('.xlsx または .csv のファイルを入れてください');
+
+    const built = buildSanpaiImport_(parsed.rows);
+
+    // 書き込まずに、何がどう変わるかだけ先に確かめる
+    const preview = await postSanpaiImport_(built, true);
+    sanpaiImportPayload_ = built;
+    renderSanpaiImportPreview_(preview, file.name, parsed.sheetName);
+  } catch (err) {
+    sanpaiImportMsg_('<div class="error-box">読み込めませんでした。<br>' + esc(err.message) + '</div>');
+  } finally {
+    setSanpaiDropBusy_(false);
+  }
+}
+
+async function postSanpaiImport_(built, dryRun) {
+  const res = await fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'import_sanpai', key: ACCESS_KEY, dryRun: !!dryRun,
+      months: built.months, rows: built.rows
+    })
+  });
+  const data = await res.json();
+  if (data.status !== 'ok') throw new Error(data.message || '不明なエラー');
+  return data;
+}
+
+function renderSanpaiImportPreview_(d, fileName, sheetName) {
+  const yen = function(n) { return Math.round(n).toLocaleString('ja-JP'); };
+  const monthList = d.monthTotals.map(function(m) { return m.ym + '（' + yen(m.total / 1000) + ' 千円）'; }).join('、');
+
+  var html = '<div class="import-summary">';
+  html += '<div style="font-weight:600;">この内容で取り込みます</div><dl>';
+  html += '<dt>ファイル</dt><dd>' + esc(fileName) + '（' + esc(sheetName) + '）</dd>';
+  html += '<dt>対象の月</dt><dd>' + esc(monthList) + '</dd>';
+  html += '<dt>現場の数</dt><dd>' + d.fileSites + ' 件</dd>';
+  html += '<dt>更新される行</dt><dd>' + d.updated + ' 件</dd>';
+  html += '<dt>新しく増える行</dt><dd>' + d.added + ' 件</dd>';
+  html += '<dt>0円になる行</dt><dd>' + d.zeroed + ' 件<span style="color:var(--muted);">（今回のファイルに無かった現場）</span></dd>';
+  if (d.fileDupCount) {
+    html += '<dt>合算した行</dt><dd>' + d.fileDupCount + ' 件<span style="color:var(--muted);">（同じコードが複数あったため）</span></dd>';
+  }
+  html += '</dl>';
+  html += '<div class="modal-actions" style="justify-content:flex-start;">'
+    + '<button class="btn btn-primary" onclick="confirmSanpaiImport_()">この内容で取り込む</button>'
+    + '<button class="btn" onclick="cancelSanpaiImport_()">やめる</button></div>';
+  html += '</div>';
+  sanpaiImportMsg_(html);
+}
+
+function cancelSanpaiImport_() {
+  sanpaiImportPayload_ = null;
+  sanpaiImportMsg_('');
+}
+
+async function confirmSanpaiImport_() {
+  if (!sanpaiImportPayload_) return;
+  setSanpaiDropBusy_(true);
+  sanpaiImportMsg_('<div class="empty empty-loading"><span class="spinner-sm"></span><br>取り込んでいます...</div>');
+  try {
+    const d = await postSanpaiImport_(sanpaiImportPayload_, false);
+    sanpaiImportPayload_ = null;
+
+    // 取り込んだ内容でランキングを取り直す（条件ごとのキャッシュも捨てる）
+    Object.keys(sanpaiCache).forEach(function(k) { delete sanpaiCache[k]; });
+    cachedSanpai = null;
+    const sel = document.getElementById('sanpai-month-select');
+    sel.innerHTML = '';
+    await loadSanpai_();
+    populateSanpaiMonthSelect_();
+    renderSanpai();
+
+    const yen = function(n) { return Math.round(n).toLocaleString('ja-JP'); };
+    sanpaiImportMsg_('<div class="import-summary" style="color:var(--success-text);font-weight:600;">'
+      + '✅ 取り込みました：' + d.months.join('、')
+      + '（更新 ' + d.updated + ' 件 ／ 追加 ' + d.added + ' 件 ／ 0円化 ' + d.zeroed + ' 件 ／ 合計 '
+      + yen(d.monthTotals.reduce(function(a, m) { return a + m.total; }, 0) / 1000) + ' 千円）</div>');
+  } catch (err) {
+    sanpaiImportMsg_('<div class="error-box">取り込みに失敗しました。<br>' + esc(err.message) + '</div>');
+  } finally {
+    setSanpaiDropBusy_(false);
+  }
+}
+
+// ドラッグ＆ドロップの受け口。タブが描かれた後に一度だけ結びつける
+function bindSanpaiDrop_() {
+  if (window._sanpaiDropBound) return;
+  const zone = document.getElementById('sanpai-drop');
+  if (!zone) return;
+  window._sanpaiDropBound = true;
+  ['dragenter', 'dragover'].forEach(function(ev) {
+    zone.addEventListener(ev, function(e) {
+      e.preventDefault(); e.stopPropagation(); zone.classList.add('is-over');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function(ev) {
+    zone.addEventListener(ev, function(e) {
+      e.preventDefault(); e.stopPropagation(); zone.classList.remove('is-over');
+    });
+  });
+  zone.addEventListener('drop', function(e) {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleSanpaiFile_(f);
+  });
+  // ページの他の場所に落としてファイルが開いてしまうのを防ぐ
+  ['dragover', 'drop'].forEach(function(ev) {
+    window.addEventListener(ev, function(e) {
+      if (!zone.contains(e.target)) e.preventDefault();
+    });
+  });
 }
 
 // ============================================================
