@@ -6,7 +6,7 @@
 
 SKグループ営業会議向けの実績・人事ダッシュボード。
 
-URL: https://kasuyakouta.github.io/skg-dashboard/
+URL: https://skgroup-dx.github.io/skg-dashboard/
 
 
 
