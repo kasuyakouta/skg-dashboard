@@ -1065,8 +1065,21 @@ let kengakuDefaultYmApplied = false;
 // ============================================================
 // JSONP fetch（CORSを回避）
 // ============================================================
+// 1回のページ表示でGASへ15本ほど問い合わせるため、そのうち1本でも通信に失敗すると
+// 画面にエラーが出てしまう。一時的な失敗は珍しくないので、少し待って自動でやり直す。
+// script.onerror が起きるのは「GASのURLにHTTPレベルで到達できなかった」場合だけで、
+// GAS内部のエラーはJSONPに包まれて status:"error" として返るため、この経路は通らない。
+const JSONP_MAX_ATTEMPTS = 3;
+// 最後まで失敗したときに、利用者が次に何を確認すればよいか分かる文言にしておく
+const JSONP_FAIL_MESSAGE =
+  'サーバーに接続できませんでした（' + JSONP_MAX_ATTEMPTS + '回試しました）。'
+  + 'ネットワークが script.google.com と script.googleusercontent.com を'
+  + '遮断していないかご確認ください。';
+
 let _jsonpCounter = 0;
-function fetchJSONP(url) {
+let _jsonpRetryCount = 0;   // 何回やり直したかの記録（不具合の切り分け用）
+function fetchJSONP(url, attempt) {
+  const tryNo = attempt || 1;
   return new Promise(function(resolve, reject) {
     const cbName = 'skg_cb_' + (++_jsonpCounter);
     const script = document.createElement('script');
@@ -1085,11 +1098,40 @@ function fetchJSONP(url) {
     };
     script.onerror = function() {
       cleanup();
-      reject(new Error('スクリプト読み込みエラー'));
+      if (tryNo < JSONP_MAX_ATTEMPTS) {
+        _jsonpRetryCount++;
+        console.warn('通信に失敗したのでやり直します（' + tryNo + '回目）: ' + url);
+        // 少し間を空けてから試す（間隔は回を追うごとに広げる）
+        setTimeout(function() {
+          fetchJSONP(url, tryNo + 1).then(resolve, reject);
+        }, tryNo * 800);
+        return;
+      }
+      reject(new Error(JSONP_FAIL_MESSAGE));
     };
     script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
     document.body.appendChild(script);
   });
+}
+
+// 不具合の相談を受けたときに、利用者に実行してもらって状況を確かめるための関数。
+// ブラウザのコンソールで skgDiag() と打つと、接続の可否と再試行回数が分かる。
+async function skgDiag() {
+  const out = {
+    ページのURL: location.href,
+    ブラウザ: navigator.userAgent,
+    オンライン判定: navigator.onLine,
+    これまでの再試行回数: _jsonpRetryCount
+  };
+  const t0 = Date.now();
+  try {
+    const d = await fetchJSONP(withKey(GAS_URL + '?type=months'));
+    out.GASへの接続 = 'OK（' + (Date.now() - t0) + 'ms）status=' + (d && d.status);
+  } catch (e) {
+    out.GASへの接続 = 'NG: ' + e.message;
+  }
+  console.log(out);
+  return out;
 }
 function showTab(id, el) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
