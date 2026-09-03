@@ -945,9 +945,27 @@ function pickNearestPastYm_(yms, targetYm) {
   return pastOrCurrent.length ? pastOrCurrent[0] : [...yms].sort()[0];
 }
 
-// 未来の空月ではなく「前月（実績がある中で一番新しい月）」をデフォルトにする
+// 実績値が入っている一番新しい月。GASの type=months が返す。
+// 前回開いたときの値をブラウザに覚えておき、暫定の既定月の判定にも使う
+// （そうしないと月初は毎回「8月→7月」と読み直しが発生し、通信が倍になる）。
+let cachedLatestActualYm = '';
+try {
+  cachedLatestActualYm = localStorage.getItem('skg_latest_actual_ym') || '';
+} catch (e) { /* プライベートブラウズ等で使えない場合は無視する */ }
+
+function rememberLatestActualYm_(ym) {
+  if (!ym) return;
+  cachedLatestActualYm = ym;
+  try { localStorage.setItem('skg_latest_actual_ym', ym); } catch (e) { /* 無視 */ }
+}
+
+// 既定で表示する月を決める。原則は「前月」だが、前月の実績がまだ入力されていない
+// 場合は、実績が入っている直近の月まで戻す。以前は「行が存在する月」で判定して
+// いたため、目標だけ入力済みの月を選んでしまい、達成率0%の画面が既定で出ていた。
 function pickDefaultYm(months) {
-  return pickNearestPastYm_(months, getDefaultReportYm_());
+  const target = getDefaultReportYm_();
+  const limit = (cachedLatestActualYm && cachedLatestActualYm < target) ? cachedLatestActualYm : target;
+  return pickNearestPastYm_(months, limit);
 }
 
 // 年月セレクトを1つ前/次の月へ移動する（前月・翌月ボタン用）
@@ -1220,6 +1238,7 @@ async function init() {
       res = await fetchJSONP(withKey(GAS_URL + '?type=months'));
     }
     const months = (res.months || []).sort().reverse();
+    rememberLatestActualYm_(res.latestActualYm);
     if (!months.length) return; // 取得できなくても、既に暫定の一覧で動作しているため何もしなくてよい
 
     const currentValue = sel.value;
@@ -1230,11 +1249,19 @@ async function init() {
       sel.appendChild(opt);
     });
 
+    const defaultYm = pickDefaultYm(months);
     if (months.includes(currentValue)) {
-      sel.value = currentValue; // 暫定値のままで問題なければ、取得済みのデータをそのまま使う
-    } else {
-      const defaultYm = pickDefaultYm(months);
-      if (defaultYm) { sel.value = defaultYm; loadAll(); }
+      // 暫定で選んだ月の実績がまだ入力されていなかった場合だけ、実績がある月へ移す
+      const noActualYet = cachedLatestActualYm && currentValue > cachedLatestActualYm;
+      if (noActualYet && defaultYm && defaultYm !== currentValue) {
+        sel.value = defaultYm;
+        loadAll();
+      } else {
+        sel.value = currentValue; // 暫定値のままで問題なければ、取得済みのデータをそのまま使う
+      }
+    } else if (defaultYm) {
+      sel.value = defaultYm;
+      loadAll();
     }
   } catch(e) {
     // 正式な一覧が取得できなくても、既に暫定の一覧で動作しているため何もしなくてよい
@@ -1244,7 +1271,17 @@ async function init() {
 // ============================================================
 // メイン：全データを取得して表示
 // ============================================================
+// 読み込みが2つ以上同時に走ると、cachedPerf に別の月の行が混ざってしまう。
+// （月初に既定月を「前月」から「実績がある直近の月」へ訂正するときに実際に起きた。
+//  8月の57行と7月の63行が合算されて120行になり、達成率がおかしくなった。）
+// 世代番号を持たせ、後から始まった読み込みだけが画面とキャッシュを更新する。
+let _loadAllRun = 0;
+
 async function loadAll(nocache) {
+  const runId = ++_loadAllRun;
+  // 自分より後に始まった読み込みがあるかどうか
+  const superseded = function() { return runId !== _loadAllRun; };
+
   const ym = document.getElementById('ym-select').value;
   if (!ym) return;
   document.getElementById('header-ym').textContent = '読み込み中...';
@@ -1286,13 +1323,16 @@ async function loadAll(nocache) {
   let data = null;
   try {
     data = await flatPromise;
+    if (superseded()) return;   // 別の月の読み込みが始まっているので、ここで捨てる
     if (data && data.perf) data.perf.forEach(function(r){ cachedPerf.push(r); });
     if (data && data.hr)   data.hr.forEach(function(r){   cachedHr.push(r);   });
   } catch(err) {
+    if (superseded()) return;
     setStatus('', false);
     document.getElementById('summary-body').innerHTML =
       '<div class="error-box">データ取得に失敗しました。<br>' + err.message + '</div>';
   }
+  if (superseded()) return;
 
   // サマリー計算（当月分）。前月比バッジはまだ届いていないので、いったん「不明」にしておく
   cachedSummary = computeDeptSummary(cachedPerf, ym, DEPTS);
@@ -1347,6 +1387,7 @@ async function loadAll(nocache) {
   const prevMonthWork = (async function() {
     // 前月比較（前月比バッジ用。取得できなくても本体表示は継続する）
     const prevFlatData = await prevFlatPromise;
+    if (superseded()) return;
     const prevPerf = (prevFlatData && prevFlatData.perf) ? prevFlatData.perf : [];
     const prevSummary = computeDeptSummary(prevPerf, prevYm, DEPTS);
     cachedSummary.forEach(function(row) {
@@ -1358,6 +1399,7 @@ async function loadAll(nocache) {
 
   const actionsWork = (async function() {
     const actionsData = await actionsPromise;
+    if (superseded()) return;
     if (needActions) {
       cachedActions = (actionsData && actionsData.list) ? actionsData.list : [];
       actionsLoaded = true;
@@ -1367,6 +1409,7 @@ async function loadAll(nocache) {
 
   const infographicWork = (async function() {
     const infographicData = await infographicPromise;
+    if (superseded()) return;
     cachedInfographic = (infographicData && (infographicData.imageFileId || infographicData.reportText))
       ? infographicData : null;
     // renderInfographicReport が作る<img>は遅延読み込みにしていないため、
