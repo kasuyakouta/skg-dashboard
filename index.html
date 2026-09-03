@@ -1065,21 +1065,38 @@ let kengakuDefaultYmApplied = false;
 // ============================================================
 // JSONP fetch（CORSを回避）
 // ============================================================
-// 1回のページ表示でGASへ15本ほど問い合わせるため、そのうち1本でも通信に失敗すると
-// 画面にエラーが出てしまう。一時的な失敗は珍しくないので、少し待って自動でやり直す。
-// script.onerror が起きるのは「GASのURLにHTTPレベルで到達できなかった」場合だけで、
-// GAS内部のエラーはJSONPに包まれて status:"error" として返るため、この経路は通らない。
-const JSONP_MAX_ATTEMPTS = 3;
-// 最後まで失敗したときに、利用者が次に何を確認すればよいか分かる文言にしておく
-const JSONP_FAIL_MESSAGE =
-  'サーバーに接続できませんでした（' + JSONP_MAX_ATTEMPTS + '回試しました）。'
-  + 'ネットワークが script.google.com と script.googleusercontent.com を'
+// 読み取りの通信について
+//   以前は JSONP（<script src> でGASを読み込む）だけを使っていたが、この方式は
+//   Googleのログイン Cookie を一緒に送ってしまうため、複数のGoogleアカウントに
+//   ログインしている人は /u/1/ などへ転送されて読み込みに失敗していた
+//   （画面には「スクリプト読み込みエラー」と出るだけで原因が分からない）。
+//   クロスオリジンの fetch は既定で Cookie を送らないため、誰がどのアカウントで
+//   ログインしていても同じ結果になる。GAS側は Access-Control-Allow-Origin: * を
+//   返しており、転送（302）にも付いているので iOS Safari でも通る。
+//   万が一 fetch が通らない環境のために、失敗したときだけ従来の JSONP で試す。
+//
+//   なお1回のページ表示でGASへ15本ほど問い合わせるため、そのうち1本でも
+//   一時的に失敗すると画面がエラーになる。少し待って自動でやり直す。
+const READ_MAX_ATTEMPTS = 3;
+const READ_FAIL_MESSAGE =
+  'サーバーに接続できませんでした（' + READ_MAX_ATTEMPTS + '回試しました）。'
+  + 'ネットワークや拡張機能が script.google.com と script.googleusercontent.com を'
   + '遮断していないかご確認ください。';
 
+// 不具合の切り分け用の記録（skgDiag() で見られる）
+const _readStats = { fetchOk: 0, fetchNg: 0, jsonpOk: 0, jsonpNg: 0, retries: 0, lastError: null };
+
+// Cookieを送らずにGASから取る。CORSが使えない環境ではここで失敗する
+async function fetchViaCors_(url) {
+  // credentials は既定のままにする（クロスオリジンではCookieが送られない）
+  const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
+// 従来のJSONP。fetchが通らなかったときの予備
 let _jsonpCounter = 0;
-let _jsonpRetryCount = 0;   // 何回やり直したかの記録（不具合の切り分け用）
-function fetchJSONP(url, attempt) {
-  const tryNo = attempt || 1;
+function fetchViaJsonp_(url) {
   return new Promise(function(resolve, reject) {
     const cbName = 'skg_cb_' + (++_jsonpCounter);
     const script = document.createElement('script');
@@ -1092,48 +1109,72 @@ function fetchJSONP(url, attempt) {
       delete window[cbName];
       if (script.parentNode) document.body.removeChild(script);
     }
-    window[cbName] = function(data) {
-      cleanup();
-      resolve(data);
-    };
-    script.onerror = function() {
-      cleanup();
-      if (tryNo < JSONP_MAX_ATTEMPTS) {
-        _jsonpRetryCount++;
-        console.warn('通信に失敗したのでやり直します（' + tryNo + '回目）: ' + url);
-        // 少し間を空けてから試す（間隔は回を追うごとに広げる）
-        setTimeout(function() {
-          fetchJSONP(url, tryNo + 1).then(resolve, reject);
-        }, tryNo * 800);
-        return;
-      }
-      reject(new Error(JSONP_FAIL_MESSAGE));
-    };
+    window[cbName] = function(data) { cleanup(); resolve(data); };
+    script.onerror = function() { cleanup(); reject(new Error('スクリプトを読み込めませんでした')); };
     script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
     document.body.appendChild(script);
   });
 }
 
+// 読み取りの入口。関数名は以前のまま残しているので呼び出し側は変更不要
+async function fetchJSONP(url) {
+  var lastErr = null;
+  for (var attempt = 1; attempt <= READ_MAX_ATTEMPTS; attempt++) {
+    // まず fetch
+    try {
+      const data = await fetchViaCors_(url);
+      _readStats.fetchOk++;
+      return data;
+    } catch (e) {
+      _readStats.fetchNg++;
+      lastErr = e;
+    }
+    // 次に予備のJSONP
+    try {
+      const data = await fetchViaJsonp_(url);
+      _readStats.jsonpOk++;
+      return data;
+    } catch (e) {
+      _readStats.jsonpNg++;
+      lastErr = e;
+    }
+    if (attempt < READ_MAX_ATTEMPTS) {
+      _readStats.retries++;
+      console.warn('通信に失敗したのでやり直します（' + attempt + '回目）: ' + url + ' / ' + (lastErr && lastErr.message));
+      await new Promise(function(r) { setTimeout(r, attempt * 800); });
+    }
+  }
+  _readStats.lastError = lastErr && lastErr.message;
+  throw new Error(READ_FAIL_MESSAGE);
+}
+
 // 不具合の相談を受けたときに、利用者に実行してもらって状況を確かめるための関数。
-// ブラウザのコンソールで skgDiag() と打つと、接続の可否と再試行回数が分かる。
+// ブラウザのコンソールで skgDiag() と打つと、どちらの方式で通ったかが分かる。
 async function skgDiag() {
   const out = {
     ページのURL: location.href,
     ブラウザ: navigator.userAgent,
-    オンライン判定: navigator.onLine,
-    これまでの再試行回数: _jsonpRetryCount
+    オンライン判定: navigator.onLine
   };
-  const t0 = Date.now();
+  const url = withKey(GAS_URL + '?type=months');
+  var t0 = Date.now();
   try {
-    const d = await fetchJSONP(withKey(GAS_URL + '?type=months'));
-    out.GASへの接続 = 'OK（' + (Date.now() - t0) + 'ms）status=' + (d && d.status);
+    const d = await fetchViaCors_(url);
+    out.fetchで取得 = 'OK（' + (Date.now() - t0) + 'ms）status=' + (d && d.status);
   } catch (e) {
-    out.GASへの接続 = 'NG: ' + e.message;
+    out.fetchで取得 = 'NG: ' + e.message;
   }
+  t0 = Date.now();
+  try {
+    const d = await fetchViaJsonp_(url);
+    out.JSONPで取得 = 'OK（' + (Date.now() - t0) + 'ms）status=' + (d && d.status);
+  } catch (e) {
+    out.JSONPで取得 = 'NG: ' + e.message;
+  }
+  out.これまでの内訳 = JSON.parse(JSON.stringify(_readStats));
   console.log(out);
   return out;
-}
-function showTab(id, el) {
+}function showTab(id, el) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
